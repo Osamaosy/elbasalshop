@@ -1,4 +1,6 @@
 const Product = require('../models/Product');
+const Category = require('../models/Category');
+const mongoose = require('mongoose');
 
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
@@ -18,26 +20,55 @@ const getProducts = async (req, res) => {
     } = req.query;
     
     // Build filter
-    const filter = { isAvailable: true };
+    let filter = { isAvailable: true };
     
-    if (category) filter.category = category;
-    if (brand) filter.brand = new RegExp(brand, 'i');
+    // ✅ 1. إصلاح مشكلة الأقسام (Category Fix)
+    if (category) {
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        // لو القيمة عبارة عن ID صحيح، ابحث بيه
+        filter.category = category;
+      } else {
+        // لو القيمة اسم (Slug/Name)، ابحث عن القسم الأول وهات الـ ID بتاعه
+        const categoryDoc = await Category.findOne({
+          $or: [
+            { slug: category },
+            { type: category },
+            { name: { $regex: category, $options: 'i' } }
+          ]
+        });
+
+        if (categoryDoc) {
+          filter.category = categoryDoc._id;
+        } else {
+          // لو القسم مش موجود، رجع قائمة فاضية بدل ما تضرب Error
+          return res.status(200).json({
+            success: true,
+            data: { products: [], pagination: {} }
+          });
+        }
+      }
+    }
+    
+    if (brand) filter.brand = { $regex: brand, $options: 'i' };
+    
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
+    
     if (inStock === 'true') filter.stock = { $gt: 0 };
+    
     if (search) {
       filter.$or = [
-        { name: new RegExp(search, 'i') },
-        { description: new RegExp(search, 'i') },
-        { brand: new RegExp(search, 'i') }
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { brand: { $regex: search, $options: 'i' } }
       ];
     }
     
     // Pagination
-    const skip = (page - 1) * limit;
+    const skip = (Number(page) - 1) * Number(limit);
     
     // Get products
     const products = await Product.find(filter)
@@ -113,6 +144,15 @@ const createProduct = async (req, res) => {
   try {
     const productData = req.body;
     
+    // Parse specifications if it's a string
+    if (typeof productData.specifications === 'string') {
+        try {
+            productData.specifications = JSON.parse(productData.specifications);
+        } catch (e) {
+            productData.specifications = {};
+        }
+    }
+
     // Handle uploaded images
     if (req.files && req.files.length > 0) {
       productData.images = req.files.map(file => `/uploads/products/${file.filename}`);
@@ -152,6 +192,15 @@ const updateProduct = async (req, res) => {
     }
     
     const updateData = req.body;
+
+    // Parse specifications
+    if (typeof updateData.specifications === 'string') {
+        try {
+            updateData.specifications = JSON.parse(updateData.specifications);
+        } catch (e) {
+            // ignore error
+        }
+    }
     
     // Handle new uploaded images
     if (req.files && req.files.length > 0) {
@@ -215,6 +264,7 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+// ✅ 2. التأكد من وجود دالة المنتجات المميزة
 // @desc    Get featured products
 // @route   GET /api/products/featured
 // @access  Public
@@ -240,6 +290,7 @@ const getFeaturedProducts = async (req, res) => {
   }
 };
 
+// ✅ 3. تصدير جميع الدوال بشكل صحيح
 module.exports = {
   getProducts,
   getProductById,

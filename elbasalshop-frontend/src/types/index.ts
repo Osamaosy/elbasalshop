@@ -1,11 +1,30 @@
+// src/types/index.ts
+
 export interface User {
   _id: string;
   name: string;
   email: string;
   phone?: string;
   role: 'user' | 'admin';
-  createdAt: string;
+  address?: string;
+  city?: string;
 }
+
+// ✅ الشكل العام الموحد للردود من الباك اند
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+// ✅ محتوى رد التوثيق (الدخول/التسجيل)
+export interface AuthPayload {
+  user: User;
+  token: string;
+}
+
+// تعريف نوع رد التوثيق باستخدام الشكل العام
+export type AuthResponse = ApiResponse<AuthPayload>;
 
 export interface Category {
   _id: string;
@@ -53,14 +72,11 @@ export interface Order {
   createdAt: string;
 }
 
-export interface AuthResponse {
-  success: boolean;
-  token: string;
-  user: User;
-}
-
-export interface OrderResponse {
-  success: boolean;
+// ✅ محتوى رد الطلب (عشان الواتساب)
+export interface OrderPayload {
   order: Order;
   whatsappLink: string;
 }
+
+// تعريف نوع رد الطلب
+export type OrderResponse = ApiResponse<OrderPayload>;
