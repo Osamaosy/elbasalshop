@@ -29,7 +29,7 @@ const Checkout: React.FC = () => {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.customerName || !formData.customerPhone || !formData.customerAddress) {
@@ -46,31 +46,41 @@ const Checkout: React.FC = () => {
 
     try {
       const orderData = {
-        customerName: formData.customerName,
-        customerPhone: formData.customerPhone,
-        customerAddress: formData.customerAddress,
-        notes: formData.notes,
-        items: items.map(item => ({
+        products: items.map(item => ({
           product: item.product._id,
-          quantity: item.quantity,
-          price: item.product.price
+          quantity: item.quantity
         })),
-        totalAmount: totalPrice
+        customerInfo: {
+          name: formData.customerName,
+          phone: formData.customerPhone,
+          address: formData.customerAddress,
+          city: 'Rashid'
+        },
+        notes: formData.notes
       };
 
       const response = await api.post('/orders', orderData);
 
-      if (response.data.success) {
+      // ✅ تصحيح قراءة البيانات
+      const responseData = response.data; // Axios response data
+      
+      if (responseData.success) {
         setOrderSuccess(true);
         clearCart();
         toast.success('تم إرسال الطلب بنجاح!');
 
-        // Open WhatsApp link
-        if (response.data.whatsappLink) {
-          window.open(response.data.whatsappLink, '_blank');
+        // ✅ الوصول الصحيح لرابط الواتساب (داخل data.data)
+        const whatsappLink = responseData.data?.whatsappLink;
+        
+        if (whatsappLink) {
+          // تأخير بسيط لضمان عدم حظر المتصفح للنافذة المنبثقة
+          setTimeout(() => {
+            window.open(whatsappLink, '_blank');
+          }, 1000);
         }
       }
     } catch (error: any) {
+      console.error('Checkout error:', error);
       toast.error(error.response?.data?.message || 'حدث خطأ أثناء إرسال الطلب');
     } finally {
       setIsSubmitting(false);

@@ -34,9 +34,13 @@ const Shop: React.FC = () => {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/categories');
-      setCategories(response.data.categories || response.data || []);
+      // التصحيح هنا: الوصول إلى response.data.data.categories
+      // واستخدام مصفوفة فارغة كقيمة بديلة لتجنب الخطأ
+      const categoriesData = response.data?.data?.categories || [];
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
     } catch (error) {
       console.error('Error fetching categories:', error);
+      setCategories([]); // تعيين مصفوفة فارغة عند حدوث خطأ
     }
   };
 
@@ -51,7 +55,9 @@ const Shop: React.FC = () => {
       if (searchParams.get('maxPrice')) params.append('maxPrice', searchParams.get('maxPrice')!);
 
       const response = await api.get(`/products?${params.toString()}`);
-      setProducts(response.data.products || response.data || []);
+      // التصحيح هنا أيضاً: الوصول إلى response.data.data.products
+      const productsData = response.data?.data?.products || [];
+      setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
       console.error('Error fetching products:', error);
       setProducts([]);

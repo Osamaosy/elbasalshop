@@ -15,9 +15,6 @@ const app = express();
 // Connect to database
 connectDB();
 
-// Middleware
-app.use(helmet()); // Security headers
-
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
@@ -26,18 +23,27 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions)); // Enable CORS
 
+// Middleware
+app.use(cors(corsOptions)); // Enable CORS
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan('dev')); // Logging
+app.use(helmet()); // Security headers
 
-// Rate limiting
+// Rate limiting - عشان نحمي السيرفر من الطلبات الكتيرة
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  windowMs: 15 * 60 * 1000, // 15 دقيقة
+  max: 200, // 200 طلب كحد أقصى كل 15 دقيقة
+  message: {
+    success: false,
+    message: 'طلبات كتير من نفس الـ IP، جرب تاني بعد شوية'
+  },
+  standardHeaders: true, // Return rate limit info in headers
+  legacyHeaders: false, // Disable X-RateLimit-* headers
 });
+
+// تطبيق الـ rate limiting على كل الـ API routes
 app.use('/api/', limiter);
 
 // Routes
@@ -53,23 +59,24 @@ app.use('/uploads', express.static('uploads'));
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Welcome to Mobile Shop API',
+    message: 'مرحباً بك في البصال شوب API 🛍️',
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
       products: '/api/products',
       categories: '/api/categories',
       orders: '/api/orders'
-    }
+    },
+    status: 'السيرفر شغال بنجاح ✅'
   });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('❌ خطأ:', err.stack);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || 'Internal Server Error',
+    message: err.message || 'حدث خطأ في السيرفر',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
@@ -78,12 +85,15 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'الصفحة أو الـ API endpoint مش موجود'
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`🚀 السيرفر شغال في وضع ${process.env.NODE_ENV} على البورت ${PORT}`);
+  console.log(`📡 API متاح على: http://localhost:${PORT}/api`);
+  console.log(`📦 الأقسام: http://localhost:${PORT}/api/categories`);
+  console.log(`🛍️  المنتجات: http://localhost:${PORT}/api/products`);
 });
