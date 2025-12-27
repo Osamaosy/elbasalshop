@@ -76,14 +76,27 @@ const orderSchema = new mongoose.Schema({
 
 // Generate order number before saving
 orderSchema.pre('save', async function(next) {
-  if (this.isNew) {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    
-    const count = await mongoose.model('Order').countDocuments();
-    
-    this.orderNumber = `ORD-${year}${month}-${String(count + 1).padStart(5, '0')}`;
+  if (this.isNew && !this.orderNumber) {
+    try {
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      
+      // Use findOneAndUpdate with upsert to get atomic counter
+      // This prevents race conditions when multiple orders are created simultaneously
+      const Counter = mongoose.model('Counter');
+      const counter = await Counter.findOneAndUpdate(
+        { _id: 'orderNumber' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
+      
+      this.orderNumber = `ORD-${year}${month}-${String(counter.seq).padStart(5, '0')}`;
+    } catch (error) {
+      console.error('Error generating order number:', error);
+      // Fallback to timestamp-based order number if counter fails
+      this.orderNumber = `ORD-${Date.now()}`;
+    }
   }
   next();
 });

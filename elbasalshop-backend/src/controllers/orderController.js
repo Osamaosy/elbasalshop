@@ -234,7 +234,7 @@ const getAllOrders = async (req, res) => {
     
     const total = await Order.countDocuments(filter);
     
-    // Calculate stats
+    // Calculate stats safely
     const stats = await Order.aggregate([
       {
         $group: {

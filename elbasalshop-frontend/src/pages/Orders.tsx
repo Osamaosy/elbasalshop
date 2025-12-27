@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Clock, CheckCircle, Truck, XCircle, ArrowRight } from 'lucide-react';
+import { Package, Clock, CheckCircle, Truck, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { formatPrice } from '@/lib/api';
 import { Order } from '@/types';
+import toast from 'react-hot-toast';
 
 const statusConfig = {
   pending: { label: 'قيد الانتظار', icon: Clock, color: 'text-warning bg-warning/10' },
   confirmed: { label: 'تم التأكيد', icon: CheckCircle, color: 'text-primary bg-primary/10' },
+  processing: { label: 'قيد التجهيز', icon: Package, color: 'text-secondary bg-secondary/10' },
   shipped: { label: 'جاري الشحن', icon: Truck, color: 'text-secondary bg-secondary/10' },
   delivered: { label: 'تم التوصيل', icon: CheckCircle, color: 'text-success bg-success/10' },
   cancelled: { label: 'ملغي', icon: XCircle, color: 'text-destructive bg-destructive/10' },
@@ -18,19 +20,38 @@ const Orders: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchOrders();
+    } else {
+      setIsLoading(false);
     }
   }, [isAuthenticated]);
 
   const fetchOrders = async () => {
+    setIsLoading(true);
+    setError(null);
+    
     try {
       const response = await api.get('/orders');
-      setOrders(response.data.orders || response.data || []);
-    } catch (error) {
+      const data = response.data;
+      
+      // Handle different response structures
+      const ordersData = data.data?.orders || data.orders || data.data || [];
+      setOrders(Array.isArray(ordersData) ? ordersData : []);
+    } catch (error: any) {
       console.error('Error fetching orders:', error);
+      setError('فشل تحميل الطلبات');
+      
+      if (error.response?.status === 401) {
+        toast.error('انتهت جلستك، يرجى تسجيل الدخول مرة أخرى');
+      } else {
+        toast.error('حدث خطأ أثناء تحميل الطلبات');
+      }
+      
+      setOrders([]);
     } finally {
       setIsLoading(false);
     }
@@ -64,7 +85,15 @@ const Orders: React.FC = () => {
       <div className="container mx-auto py-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full" />
+            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-20">
+            <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-foreground mb-2">{error}</h2>
+            <Button onClick={fetchOrders} variant="outline" className="mt-4">
+              إعادة المحاولة
+            </Button>
           </div>
         ) : orders.length === 0 ? (
           <div className="text-center py-20">
@@ -89,7 +118,9 @@ const Orders: React.FC = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
                       <p className="text-sm text-muted-foreground">رقم الطلب</p>
-                      <p className="font-mono font-bold text-foreground">{order._id.slice(-8)}</p>
+                      <p className="font-mono font-bold text-foreground">
+                        {order.orderNumber || `#${order._id.slice(-8)}`}
+                      </p>
                     </div>
                     <div className="text-right md:text-left">
                       <p className="text-sm text-muted-foreground">التاريخ</p>
@@ -107,11 +138,15 @@ const Orders: React.FC = () => {
                     <div className="flex flex-wrap gap-4 items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">عدد المنتجات</p>
-                        <p className="font-bold text-foreground">{order.items.length} منتج</p>
+                        <p className="font-bold text-foreground">
+                          {order.products?.length || order.items?.length || 0} منتج
+                        </p>
                       </div>
                       <div className="text-left">
                         <p className="text-sm text-muted-foreground">الإجمالي</p>
-                        <p className="text-xl font-bold text-secondary">{formatPrice(order.totalAmount)}</p>
+                        <p className="text-xl font-bold text-secondary">
+                          {formatPrice(order.totalAmount || 0)}
+                        </p>
                       </div>
                     </div>
                   </div>

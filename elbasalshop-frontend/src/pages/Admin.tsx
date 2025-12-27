@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, Link } from 'react-router-dom';
-import { Package, Plus, Users, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
+import { Package, Plus, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
-import api, { API_BASE_URL, formatPrice } from '@/lib/api';
+import api, { formatPrice, getImageUrl } from '@/lib/api';
 import { Order, Product, Category } from '@/types';
 import toast from 'react-hot-toast';
 
 const statusConfig = {
   pending: { label: 'قيد الانتظار', icon: Clock, color: 'bg-warning text-foreground' },
   confirmed: { label: 'تم التأكيد', icon: CheckCircle, color: 'bg-primary text-primary-foreground' },
+  processing: { label: 'قيد التجهيز', icon: Package, color: 'bg-secondary text-secondary-foreground' },
   shipped: { label: 'جاري الشحن', icon: Truck, color: 'bg-secondary text-secondary-foreground' },
   delivered: { label: 'تم التوصيل', icon: CheckCircle, color: 'bg-success text-accent-foreground' },
   cancelled: { label: 'ملغي', icon: XCircle, color: 'bg-destructive text-destructive-foreground' },
@@ -23,13 +24,14 @@ const Admin: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Add Product Form
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
     price: '',
-    oldPrice: '',
+    discountPrice: '',
     category: '',
     brand: '',
     stock: '',
@@ -45,17 +47,47 @@ const Admin: React.FC = () => {
 
   const fetchData = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const [ordersRes, productsRes, categoriesRes] = await Promise.all([
-        api.get('/orders'),
+      // Fetch data with proper error handling for each request
+      const results = await Promise.allSettled([
+        api.get('/orders/admin/all'),
         api.get('/products'),
         api.get('/categories'),
       ]);
-      setOrders(ordersRes.data.orders || ordersRes.data || []);
-      setProducts(productsRes.data.products || productsRes.data || []);
-      setCategories(categoriesRes.data.categories || categoriesRes.data || []);
-    } catch (error) {
+
+      // Handle orders
+      if (results[0].status === 'fulfilled') {
+        const ordersData = results[0].value.data;
+        setOrders(ordersData.data?.orders || ordersData.orders || []);
+      } else {
+        console.error('Failed to fetch orders:', results[0].reason);
+        setOrders([]);
+      }
+
+      // Handle products
+      if (results[1].status === 'fulfilled') {
+        const productsData = results[1].value.data;
+        setProducts(productsData.data?.products || productsData.products || []);
+      } else {
+        console.error('Failed to fetch products:', results[1].reason);
+        setProducts([]);
+      }
+
+      // Handle categories
+      if (results[2].status === 'fulfilled') {
+        const categoriesData = results[2].value.data;
+        setCategories(categoriesData.data?.categories || categoriesData.categories || []);
+      } else {
+        console.error('Failed to fetch categories:', results[2].reason);
+        setCategories([]);
+      }
+
+    } catch (error: any) {
       console.error('Error fetching admin data:', error);
+      setError('حدث خطأ أثناء تحميل البيانات');
+      toast.error('فشل تحميل البيانات');
     } finally {
       setIsLoading(false);
     }
@@ -63,13 +95,14 @@ const Admin: React.FC = () => {
 
   const updateOrderStatus = async (orderId: string, status: string) => {
     try {
-      await api.patch(`/orders/${orderId}/status`, { status });
+      await api.put(`/orders/${orderId}/status`, { status });
       setOrders(orders.map(order => 
         order._id === orderId ? { ...order, status: status as Order['status'] } : order
       ));
       toast.success('تم تحديث حالة الطلب');
-    } catch (error) {
-      toast.error('فشل تحديث حالة الطلب');
+    } catch (error: any) {
+      console.error('Error updating order:', error);
+      toast.error(error.response?.data?.message || 'فشل تحديث حالة الطلب');
     }
   };
 
@@ -82,7 +115,12 @@ const Admin: React.FC = () => {
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setProductImages(Array.from(e.target.files));
+      const files = Array.from(e.target.files);
+      if (files.length > 5) {
+        toast.error('الحد الأقصى 5 صور');
+        return;
+      }
+      setProductImages(files);
     }
   };
 
@@ -105,7 +143,7 @@ const Admin: React.FC = () => {
       formData.append('name', productForm.name);
       formData.append('description', productForm.description);
       formData.append('price', productForm.price);
-      if (productForm.oldPrice) formData.append('oldPrice', productForm.oldPrice);
+      if (productForm.discountPrice) formData.append('discountPrice', productForm.discountPrice);
       formData.append('category', productForm.category);
       if (productForm.brand) formData.append('brand', productForm.brand);
       formData.append('stock', productForm.stock);
@@ -123,7 +161,7 @@ const Admin: React.FC = () => {
         name: '',
         description: '',
         price: '',
-        oldPrice: '',
+        discountPrice: '',
         category: '',
         brand: '',
         stock: '',
@@ -132,6 +170,7 @@ const Admin: React.FC = () => {
       fetchData();
       setActiveTab('products');
     } catch (error: any) {
+      console.error('Error adding product:', error);
       toast.error(error.response?.data?.message || 'فشل إضافة المنتج');
     } finally {
       setIsSubmitting(false);
@@ -154,7 +193,9 @@ const Admin: React.FC = () => {
     totalOrders: orders.length,
     pendingOrders: orders.filter(o => o.status === 'pending').length,
     totalProducts: products.length,
-    totalRevenue: orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + o.totalAmount, 0),
+    totalRevenue: orders
+      .filter(o => o.status === 'delivered')
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0),
   };
 
   return (
@@ -216,6 +257,16 @@ const Admin: React.FC = () => {
           </div>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 mb-6 text-center">
+            <p className="text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchData} className="mt-2">
+              إعادة المحاولة
+            </Button>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           <Button
@@ -224,7 +275,7 @@ const Admin: React.FC = () => {
             className="gap-2"
           >
             <ShoppingBag className="w-4 h-4" />
-            الطلبات
+            الطلبات ({orders.length})
           </Button>
           <Button
             variant={activeTab === 'products' ? 'default' : 'outline'}
@@ -232,7 +283,7 @@ const Admin: React.FC = () => {
             className="gap-2"
           >
             <Package className="w-4 h-4" />
-            المنتجات
+            المنتجات ({products.length})
           </Button>
           <Button
             variant={activeTab === 'add' ? 'secondary' : 'outline'}
@@ -261,15 +312,15 @@ const Admin: React.FC = () => {
                   </div>
                 ) : (
                   orders.map((order) => {
-                    const status = statusConfig[order.status];
+                    const status = statusConfig[order.status] || statusConfig.pending;
                     return (
                       <div key={order._id} className="bg-card rounded-2xl border border-border p-4 md:p-6">
                         <div className="flex flex-wrap gap-4 items-start justify-between mb-4">
                           <div>
-                            <p className="font-mono text-sm text-muted-foreground">#{order._id.slice(-8)}</p>
-                            <p className="font-bold text-foreground">{order.customerName}</p>
-                            <p className="text-sm text-muted-foreground">{order.customerPhone}</p>
-                            <p className="text-sm text-muted-foreground">{order.customerAddress}</p>
+                            <p className="font-mono text-sm text-muted-foreground">#{order.orderNumber || order._id.slice(-8)}</p>
+                            <p className="font-bold text-foreground">{order.customerInfo?.name || 'عميل'}</p>
+                            <p className="text-sm text-muted-foreground">{order.customerInfo?.phone || '-'}</p>
+                            <p className="text-sm text-muted-foreground">{order.customerInfo?.address || '-'}</p>
                           </div>
                           <div className="text-left">
                             <p className="text-sm text-muted-foreground">
@@ -280,7 +331,7 @@ const Admin: React.FC = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-2 items-center justify-between pt-4 border-t border-border">
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             {Object.entries(statusConfig).map(([key, config]) => (
                               <button
                                 key={key}
@@ -304,22 +355,32 @@ const Admin: React.FC = () => {
             {/* Products Tab */}
             {activeTab === 'products' && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {products.map((product) => (
-                  <div key={product._id} className="bg-card rounded-xl border border-border overflow-hidden">
-                    <div className="aspect-square bg-muted">
-                      <img
-                        src={product.images?.[0] ? `${API_BASE_URL}${product.images[0]}` : '/placeholder.svg'}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-3">
-                      <h3 className="font-semibold text-sm line-clamp-1">{product.name}</h3>
-                      <p className="text-secondary font-bold">{formatPrice(product.price)}</p>
-                      <p className="text-xs text-muted-foreground">المخزون: {product.stock}</p>
-                    </div>
+                {products.length === 0 ? (
+                  <div className="col-span-full text-center py-20 bg-card rounded-2xl border border-border">
+                    <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-lg font-medium text-foreground">لا توجد منتجات</p>
                   </div>
-                ))}
+                ) : (
+                  products.map((product) => (
+                    <div key={product._id} className="bg-card rounded-xl border border-border overflow-hidden">
+                      <div className="aspect-square bg-muted">
+                        <img
+                          src={getImageUrl(product.images?.[0])}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/placeholder.svg';
+                          }}
+                        />
+                      </div>
+                      <div className="p-3">
+                        <h3 className="font-semibold text-sm line-clamp-1">{product.name}</h3>
+                        <p className="text-secondary font-bold">{formatPrice(product.price)}</p>
+                        <p className="text-xs text-muted-foreground">المخزون: {product.stock}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -363,16 +424,18 @@ const Admin: React.FC = () => {
                           onChange={handleProductFormChange}
                           placeholder="السعر"
                           required
+                          min="0"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">السعر القديم</label>
+                        <label className="block text-sm font-medium mb-2">السعر بعد الخصم</label>
                         <Input
                           type="number"
-                          name="oldPrice"
-                          value={productForm.oldPrice}
+                          name="discountPrice"
+                          value={productForm.discountPrice}
                           onChange={handleProductFormChange}
                           placeholder="اختياري"
+                          min="0"
                         />
                       </div>
                     </div>
@@ -414,11 +477,12 @@ const Admin: React.FC = () => {
                         onChange={handleProductFormChange}
                         placeholder="عدد القطع المتوفرة"
                         required
+                        min="0"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-2">صور المنتج</label>
+                      <label className="block text-sm font-medium mb-2">صور المنتج (حد أقصى 5)</label>
                       <div className="border-2 border-dashed border-input rounded-lg p-6 text-center">
                         <input
                           type="file"
