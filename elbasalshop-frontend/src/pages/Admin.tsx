@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Package, Plus, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X } from 'lucide-react';
+import { Package, Plus, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X, Tag, Edit, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,7 +19,7 @@ const statusConfig = {
 
 const Admin: React.FC = () => {
   const { isAdmin, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'add'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'categories' | 'add-product' | 'add-category'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -35,9 +35,18 @@ const Admin: React.FC = () => {
     category: '',
     brand: '',
     stock: '',
+    isFeatured: false,
   });
   const [productImages, setProductImages] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Add Category Form
+  const [categoryForm, setCategoryForm] = useState({
+    name: '',
+    type: 'mobile' as 'mobile' | 'accessory' | 'other',
+    description: '',
+    order: '0',
+  });
 
   useEffect(() => {
     if (isAdmin) {
@@ -50,14 +59,12 @@ const Admin: React.FC = () => {
     setError(null);
     
     try {
-      // Fetch data with proper error handling for each request
       const results = await Promise.allSettled([
         api.get('/orders/admin/all'),
         api.get('/products'),
         api.get('/categories'),
       ]);
 
-      // Handle orders
       if (results[0].status === 'fulfilled') {
         const ordersData = results[0].value.data;
         setOrders(ordersData.data?.orders || ordersData.orders || []);
@@ -66,7 +73,6 @@ const Admin: React.FC = () => {
         setOrders([]);
       }
 
-      // Handle products
       if (results[1].status === 'fulfilled') {
         const productsData = results[1].value.data;
         setProducts(productsData.data?.products || productsData.products || []);
@@ -75,7 +81,6 @@ const Admin: React.FC = () => {
         setProducts([]);
       }
 
-      // Handle categories
       if (results[2].status === 'fulfilled') {
         const categoriesData = results[2].value.data;
         setCategories(categoriesData.data?.categories || categoriesData.categories || []);
@@ -107,7 +112,15 @@ const Admin: React.FC = () => {
   };
 
   const handleProductFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
     setProductForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+  };
+
+  const handleCategoryFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setCategoryForm(prev => ({
       ...prev,
       [e.target.name]: e.target.value
     }));
@@ -147,6 +160,7 @@ const Admin: React.FC = () => {
       formData.append('category', productForm.category);
       if (productForm.brand) formData.append('brand', productForm.brand);
       formData.append('stock', productForm.stock);
+      formData.append('isFeatured', String(productForm.isFeatured));
       
       productImages.forEach(image => {
         formData.append('images', image);
@@ -165,6 +179,7 @@ const Admin: React.FC = () => {
         category: '',
         brand: '',
         stock: '',
+        isFeatured: false,
       });
       setProductImages([]);
       fetchData();
@@ -174,6 +189,67 @@ const Admin: React.FC = () => {
       toast.error(error.response?.data?.message || 'فشل إضافة المنتج');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!categoryForm.name || !categoryForm.type) {
+      toast.error('يرجى ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await api.post('/categories', {
+        name: categoryForm.name,
+        type: categoryForm.type,
+        description: categoryForm.description,
+        order: parseInt(categoryForm.order) || 0,
+      });
+
+      toast.success('تم إضافة القسم بنجاح');
+      setCategoryForm({
+        name: '',
+        type: 'mobile',
+        description: '',
+        order: '0',
+      });
+      fetchData();
+      setActiveTab('categories');
+    } catch (error: any) {
+      console.error('Error adding category:', error);
+      toast.error(error.response?.data?.message || 'فشل إضافة القسم');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا القسم؟')) return;
+
+    try {
+      await api.delete(`/categories/${id}`);
+      toast.success('تم حذف القسم');
+      fetchData();
+    } catch (error: any) {
+      console.error('Error deleting category:', error);
+      toast.error(error.response?.data?.message || 'فشل حذف القسم');
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا المنتج؟')) return;
+
+    try {
+      await api.delete(`/products/${id}`);
+      toast.success('تم حذف المنتج');
+      fetchData();
+    } catch (error: any) {
+      console.error('Error deleting product:', error);
+      toast.error(error.response?.data?.message || 'فشل حذف المنتج');
     }
   };
 
@@ -286,12 +362,28 @@ const Admin: React.FC = () => {
             المنتجات ({products.length})
           </Button>
           <Button
-            variant={activeTab === 'add' ? 'secondary' : 'outline'}
-            onClick={() => setActiveTab('add')}
+            variant={activeTab === 'categories' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('categories')}
+            className="gap-2"
+          >
+            <Tag className="w-4 h-4" />
+            الأقسام ({categories.length})
+          </Button>
+          <Button
+            variant={activeTab === 'add-product' ? 'secondary' : 'outline'}
+            onClick={() => setActiveTab('add-product')}
             className="gap-2"
           >
             <Plus className="w-4 h-4" />
             إضافة منتج
+          </Button>
+          <Button
+            variant={activeTab === 'add-category' ? 'secondary' : 'outline'}
+            onClick={() => setActiveTab('add-category')}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            إضافة قسم
           </Button>
         </div>
 
@@ -317,10 +409,10 @@ const Admin: React.FC = () => {
                       <div key={order._id} className="bg-card rounded-2xl border border-border p-4 md:p-6">
                         <div className="flex flex-wrap gap-4 items-start justify-between mb-4">
                           <div>
-                            <p className="font-mono text-sm text-muted-foreground">#{order.orderNumber || order._id.slice(-8)}</p>
-                            <p className="font-bold text-foreground">{order.customerInfo?.name || 'عميل'}</p>
-                            <p className="text-sm text-muted-foreground">{order.customerInfo?.phone || '-'}</p>
-                            <p className="text-sm text-muted-foreground">{order.customerInfo?.address || '-'}</p>
+                            <p className="font-mono text-sm text-muted-foreground">#{order.orderNumber}</p>
+                            <p className="font-bold text-foreground">{order.customerInfo.name}</p>
+                            <p className="text-sm text-muted-foreground">{order.customerInfo.phone}</p>
+                            <p className="text-sm text-muted-foreground">{order.customerInfo.address}</p>
                           </div>
                           <div className="text-left">
                             <p className="text-sm text-muted-foreground">
@@ -362,8 +454,8 @@ const Admin: React.FC = () => {
                   </div>
                 ) : (
                   products.map((product) => (
-                    <div key={product._id} className="bg-card rounded-xl border border-border overflow-hidden">
-                      <div className="aspect-square bg-muted">
+                    <div key={product._id} className="bg-card rounded-xl border border-border overflow-hidden group">
+                      <div className="aspect-square bg-muted relative">
                         <img
                           src={getImageUrl(product.images?.[0])}
                           alt={product.name}
@@ -372,11 +464,70 @@ const Admin: React.FC = () => {
                             (e.target as HTMLImageElement).src = '/placeholder.svg';
                           }}
                         />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            onClick={() => handleDeleteProduct(product._id)}
+                          >
+                            <Trash className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="p-3">
                         <h3 className="font-semibold text-sm line-clamp-1">{product.name}</h3>
                         <p className="text-secondary font-bold">{formatPrice(product.price)}</p>
                         <p className="text-xs text-muted-foreground">المخزون: {product.stock}</p>
+                        {product.isFeatured && (
+                          <span className="inline-block mt-1 text-xs bg-gold/20 text-gold px-2 py-0.5 rounded">
+                            مميز
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Categories Tab */}
+            {activeTab === 'categories' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categories.length === 0 ? (
+                  <div className="col-span-full text-center py-20 bg-card rounded-2xl border border-border">
+                    <Tag className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-lg font-medium text-foreground">لا توجد أقسام</p>
+                  </div>
+                ) : (
+                  categories.map((category) => (
+                    <div key={category._id} className="bg-card rounded-xl border border-border p-6 group">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-bold text-lg">{category.name}</h3>
+                          <p className="text-sm text-muted-foreground">{category.slug}</p>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleDeleteCategory(category._id)}
+                        >
+                          <Trash className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="text-muted-foreground">النوع:</span> {category.type}</p>
+                        {category.description && (
+                          <p className="text-muted-foreground">{category.description}</p>
+                        )}
+                        <p><span className="text-muted-foreground">الترتيب:</span> {category.order}</p>
+                        <p>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                            category.isActive ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+                          }`}>
+                            {category.isActive ? 'نشط' : 'معطل'}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   ))
@@ -385,7 +536,7 @@ const Admin: React.FC = () => {
             )}
 
             {/* Add Product Tab */}
-            {activeTab === 'add' && (
+            {activeTab === 'add-product' && (
               <div className="max-w-2xl mx-auto">
                 <div className="bg-card rounded-2xl border border-border p-6">
                   <h2 className="text-xl font-bold text-foreground mb-6">إضافة منتج جديد</h2>
@@ -451,7 +602,7 @@ const Admin: React.FC = () => {
                           required
                         >
                           <option value="">اختر القسم</option>
-                          {categories.map(cat => (
+                          {categories.filter(c => c.isActive).map(cat => (
                             <option key={cat._id} value={cat._id}>{cat.name}</option>
                           ))}
                         </select>
@@ -479,6 +630,20 @@ const Admin: React.FC = () => {
                         required
                         min="0"
                       />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="isFeatured"
+                        name="isFeatured"
+                        checked={productForm.isFeatured}
+                        onChange={handleProductFormChange}
+                        className="w-4 h-4 text-primary rounded"
+                      />
+                      <label htmlFor="isFeatured" className="text-sm font-medium">
+                        منتج مميز (سيظهر في الصفحة الرئيسية)
+                      </label>
                     </div>
 
                     <div>
@@ -534,6 +699,87 @@ const Admin: React.FC = () => {
                         </>
                       ) : (
                         'إضافة المنتج'
+                      )}
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Add Category Tab */}
+            {activeTab === 'add-category' && (
+              <div className="max-w-xl mx-auto">
+                <div className="bg-card rounded-2xl border border-border p-6">
+                  <h2 className="text-xl font-bold text-foreground mb-6">إضافة قسم جديد</h2>
+                  
+                  <form onSubmit={handleAddCategory} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">اسم القسم *</label>
+                      <Input
+                        type="text"
+                        name="name"
+                        value={categoryForm.name}
+                        onChange={handleCategoryFormChange}
+                        placeholder="مثال: موبايلات"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">نوع القسم *</label>
+                      <select
+                        name="type"
+                        value={categoryForm.type}
+                        onChange={handleCategoryFormChange}
+                        className="w-full h-11 px-4 rounded-lg border-2 border-input bg-background focus:border-primary focus:outline-none"
+                        required
+                      >
+                        <option value="mobile">موبايل</option>
+                        <option value="accessory">إكسسوار</option>
+                        <option value="other">أخرى</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">الوصف</label>
+                      <textarea
+                        name="description"
+                        value={categoryForm.description}
+                        onChange={handleCategoryFormChange}
+                        placeholder="وصف القسم (اختياري)"
+                        className="w-full h-20 px-4 py-3 rounded-lg border-2 border-input bg-background focus:border-primary focus:outline-none resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">ترتيب العرض</label>
+                      <Input
+                        type="number"
+                        name="order"
+                        value={categoryForm.order}
+                        onChange={handleCategoryFormChange}
+                        placeholder="0"
+                        min="0"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        الأقسام ذات الرقم الأقل تظهر أولاً
+                      </p>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="cta"
+                      size="lg"
+                      className="w-full"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin ml-2" />
+                          جاري الإضافة...
+                        </>
+                      ) : (
+                        'إضافة القسم'
                       )}
                     </Button>
                   </form>

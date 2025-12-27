@@ -28,16 +28,16 @@ const ProductDetails: React.FC = () => {
     setIsLoading(true);
     try {
       const response = await api.get(`/products/${id}`);
-      const productData = response.data.product || response.data;
+      const productData = response.data.data?.product || response.data.product;
       setProduct(productData);
 
       // Fetch related products
       if (productData.category) {
-        const categorySlug = typeof productData.category === 'object' 
-          ? productData.category.slug 
+        const categoryId = typeof productData.category === 'object' 
+          ? productData.category._id 
           : productData.category;
-        const relatedRes = await api.get(`/products?category=${categorySlug}&limit=4`);
-        const related = (relatedRes.data.products || relatedRes.data || [])
+        const relatedRes = await api.get(`/products?category=${categoryId}&limit=4`);
+        const related = (relatedRes.data.data?.products || relatedRes.data.products || [])
           .filter((p: Product) => p._id !== id);
         setRelatedProducts(related.slice(0, 4));
       }
@@ -88,8 +88,9 @@ const ProductDetails: React.FC = () => {
     );
   }
 
-  const discount = product.oldPrice
-    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+  // ✅ حساب الخصم باستخدام discountPrice
+  const discount = product.discountPrice
+    ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
     : 0;
 
   return (
@@ -117,7 +118,7 @@ const ProductDetails: React.FC = () => {
           <div className="space-y-4">
             <div className="aspect-square bg-card rounded-2xl border border-border overflow-hidden">
               <img
-                src={getImageUrl(product.images?.[selectedImage])}
+                src={getImageUrl(product.images?.[selectedImage] || product.mainImage)}
                 alt={product.name}
                 className="w-full h-full object-contain p-4"
                 onError={(e) => {
@@ -171,6 +172,12 @@ const ProductDetails: React.FC = () => {
                   غير متوفر
                 </span>
               )}
+              {/* ✅ استخدام isFeatured */}
+              {product.isFeatured && (
+                <span className="bg-gold/20 text-gold text-sm font-bold px-3 py-1 rounded-lg">
+                  منتج مميز
+                </span>
+              )}
             </div>
 
             {/* Title */}
@@ -183,10 +190,13 @@ const ProductDetails: React.FC = () => {
 
             {/* Price */}
             <div className="flex items-center gap-4">
-              <span className="text-3xl font-bold text-secondary">{formatPrice(product.price)}</span>
-              {product.oldPrice && (
+              {/* ✅ عرض السعر بعد الخصم أولاً إذا كان موجوداً */}
+              <span className="text-3xl font-bold text-secondary">
+                {formatPrice(product.discountPrice || product.price)}
+              </span>
+              {product.discountPrice && (
                 <span className="text-xl text-muted-foreground line-through">
-                  {formatPrice(product.oldPrice)}
+                  {formatPrice(product.price)}
                 </span>
               )}
             </div>

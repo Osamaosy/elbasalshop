@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Eye, Heart } from 'lucide-react';
+import { ShoppingCart, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types';
 import { getImageUrl, formatPrice } from '@/lib/api';
@@ -12,8 +12,10 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart } = useCart();
-  const discount = product.oldPrice
-    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+  
+  // ✅ استخدام discountPrice بدلاً من oldPrice
+  const discount = product.discountPrice
+    ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
     : 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -28,7 +30,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         {/* Image Container */}
         <div className="relative aspect-square overflow-hidden bg-muted">
           <img
-            src={getImageUrl(product.images?.[0])}
+            src={getImageUrl(product.images?.[0] || product.mainImage)}
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
             onError={(e) => {
@@ -48,7 +50,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
                 نفذت الكمية
               </span>
             )}
-            {product.featured && product.stock > 0 && (
+            {/* ✅ استخدام isFeatured بدلاً من featured */}
+            {product.isFeatured && product.stock > 0 && (
               <span className="bg-gold text-foreground text-xs font-bold px-2 py-1 rounded-lg">
                 مميز
               </span>
@@ -93,10 +96,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
           {/* Price */}
           <div className="mt-auto flex items-center gap-2">
-            <span className="text-lg font-bold text-secondary">{formatPrice(product.price)}</span>
-            {product.oldPrice && (
+            {/* ✅ عرض السعر بعد الخصم أولاً إذا كان موجوداً */}
+            <span className="text-lg font-bold text-secondary">
+              {formatPrice(product.discountPrice || product.price)}
+            </span>
+            {product.discountPrice && (
               <span className="text-sm text-muted-foreground line-through">
-                {formatPrice(product.oldPrice)}
+                {formatPrice(product.price)}
               </span>
             )}
           </div>

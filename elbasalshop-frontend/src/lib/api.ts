@@ -38,9 +38,12 @@ api.interceptors.response.use(
   }
 );
 
-// Helper function to get full image URL
+// ✅ Helper function to get full image URL with better placeholder
 export const getImageUrl = (path: string | null | undefined): string => {
-  if (!path) return '/placeholder.svg';
+  if (!path) {
+    // استخدام placeholder من خدمة موثوقة بدلاً من ملف محلي
+    return 'https://placehold.co/400x400/1e40af/ffffff?text=Product+Image';
+  }
   if (path.startsWith('http')) return path;
   return `${API_BASE_URL}${path}`;
 };

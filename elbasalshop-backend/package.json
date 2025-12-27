@@ -5,10 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js",
-    "seed:categories": "node scripts/seed-categories.js",
-    "seed:products": "node scripts/seed-products.js",
-    "seed:all": "npm run seed:categories && npm run seed:products"
+    "start": "node server.js"
   },
   "keywords": [
     "express",

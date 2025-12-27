@@ -20,19 +20,24 @@ const Home: React.FC = () => {
           api.get('/categories'),
         ]);
 
-        const products = productsRes.data.products || productsRes.data || [];
-        setFeaturedProducts(products.filter((p: Product) => p.featured).slice(0, 4));
+        // ✅ الوصول الصحيح للبيانات (data.data.products)
+        const products = productsRes.data.data?.products || productsRes.data.products || [];
+        
+        // ✅ استخدام isFeatured بدلاً من featured
+        setFeaturedProducts(products.filter((p: Product) => p.isFeatured).slice(0, 4));
         setNewProducts(products.slice(0, 8));
-        setCategories(categoriesRes.data.categories || categoriesRes.data || []);
+        
+        // ✅ الوصول الصحيح للبيانات (data.data.categories)
+        setCategories(categoriesRes.data.data?.categories || categoriesRes.data.categories || []);
       } catch (error) {
         console.error('Error fetching data:', error);
         // Set demo data for preview
         setNewProducts([]);
         setCategories([
-          { _id: '1', name: 'موبايلات', slug: 'mobiles', description: 'أحدث الهواتف الذكية' },
-          { _id: '2', name: 'إكسسوارات', slug: 'accessories', description: 'ملحقات الموبايل' },
-          { _id: '3', name: 'جرابات', slug: 'covers', description: 'جرابات وأغطية' },
-          { _id: '4', name: 'شواحن', slug: 'chargers', description: 'شواحن وكوابل' },
+          { _id: '1', name: 'موبايلات', slug: 'mobiles', type: 'mobile', description: 'أحدث الهواتف الذكية', isActive: true, order: 0 },
+          { _id: '2', name: 'إكسسوارات', slug: 'accessories', type: 'accessory', description: 'ملحقات الموبايل', isActive: true, order: 1 },
+          { _id: '3', name: 'جرابات', slug: 'covers', type: 'accessory', description: 'جرابات وأغطية', isActive: true, order: 2 },
+          { _id: '4', name: 'شواحن', slug: 'chargers', type: 'accessory', description: 'شواحن وكوابل', isActive: true, order: 3 },
         ]);
       } finally {
         setIsLoading(false);
@@ -44,7 +49,9 @@ const Home: React.FC = () => {
 
   const categoryIcons: Record<string, React.ReactNode> = {
     mobiles: <Smartphone className="w-8 h-8" />,
+    mobile: <Smartphone className="w-8 h-8" />,
     accessories: <Headphones className="w-8 h-8" />,
+    accessory: <Headphones className="w-8 h-8" />,
     chargers: <BatteryCharging className="w-8 h-8" />,
     covers: <Sparkles className="w-8 h-8" />,
   };
@@ -80,7 +87,7 @@ const Home: React.FC = () => {
                     <ArrowLeft className="w-5 h-5" />
                   </Button>
                 </Link>
-                <Link to="/shop?category=mobiles">
+                <Link to="/shop?category=mobile">
                   <Button variant="outline" size="xl" className="w-full sm:w-auto border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary">
                     عروض الموبايلات
                   </Button>
@@ -168,11 +175,12 @@ const Home: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {(categories.length > 0 ? categories : [
-              { _id: '1', name: 'موبايلات', slug: 'mobiles' },
-              { _id: '2', name: 'إكسسوارات', slug: 'accessories' },
-              { _id: '3', name: 'جرابات', slug: 'covers' },
-              { _id: '4', name: 'شواحن', slug: 'chargers' },
+            {/* ✅ عرض الأقسام النشطة فقط */}
+            {(categories.length > 0 ? categories.filter(c => c.isActive) : [
+              { _id: '1', name: 'موبايلات', slug: 'mobile', type: 'mobile' as const, isActive: true, order: 0 },
+              { _id: '2', name: 'إكسسوارات', slug: 'accessories', type: 'accessory' as const, isActive: true, order: 1 },
+              { _id: '3', name: 'جرابات', slug: 'covers', type: 'accessory' as const, isActive: true, order: 2 },
+              { _id: '4', name: 'شواحن', slug: 'chargers', type: 'accessory' as const, isActive: true, order: 3 },
             ]).map((category) => (
               <Link
                 key={category._id}
@@ -183,7 +191,7 @@ const Home: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="relative z-10">
                     <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-                      {categoryIcons[category.slug] || <Sparkles className="w-8 h-8" />}
+                      {categoryIcons[category.slug] || categoryIcons[category.type] || <Sparkles className="w-8 h-8" />}
                     </div>
                     <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
                       {category.name}
