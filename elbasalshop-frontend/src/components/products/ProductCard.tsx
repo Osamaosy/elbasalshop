@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingCart, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,9 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart } = useCart();
+  const [imageError, setImageError] = useState(false);
   
-  // ✅ استخدام discountPrice بدلاً من oldPrice
+  // ✅ حساب الخصم
   const discount = product.discountPrice
     ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
     : 0;
@@ -24,36 +25,42 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     addToCart(product);
   };
 
+  // ✅ الحصول على الصورة مع fallback محسّن
+  const getProductImage = () => {
+    if (imageError) {
+      return 'https://placehold.co/600x600/1e40af/ffffff?text=Product+Image';
+    }
+    return getImageUrl(product.images?.[0] || product.mainImage);
+  };
+
   return (
     <Link to={`/product/${product._id}`} className="group block">
       <div className="bg-card rounded-2xl shadow-md overflow-hidden border border-border hover:shadow-xl hover:border-primary/20 transition-all duration-300 h-full flex flex-col">
         {/* Image Container */}
         <div className="relative aspect-square overflow-hidden bg-muted">
           <img
-            src={getImageUrl(product.images?.[0] || product.mainImage)}
+            src={getProductImage()}
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/placeholder.svg';
-            }}
+            onError={() => setImageError(true)}
+            loading="lazy"
           />
           
           {/* Badges */}
           <div className="absolute top-3 right-3 flex flex-col gap-2">
             {discount > 0 && (
-              <span className="bg-destructive text-destructive-foreground text-xs font-bold px-2 py-1 rounded-lg">
+              <span className="bg-destructive text-destructive-foreground text-xs font-bold px-2 py-1 rounded-lg shadow-md">
                 خصم {discount}%
               </span>
             )}
             {product.stock <= 0 && (
-              <span className="bg-muted text-muted-foreground text-xs font-bold px-2 py-1 rounded-lg">
+              <span className="bg-muted text-muted-foreground text-xs font-bold px-2 py-1 rounded-lg shadow-md">
                 نفذت الكمية
               </span>
             )}
-            {/* ✅ استخدام isFeatured بدلاً من featured */}
             {product.isFeatured && product.stock > 0 && (
-              <span className="bg-gold text-foreground text-xs font-bold px-2 py-1 rounded-lg">
-                مميز
+              <span className="bg-gold text-foreground text-xs font-bold px-2 py-1 rounded-lg shadow-md">
+                مميز ⭐
               </span>
             )}
           </div>
@@ -85,7 +92,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           )}
 
           {/* Name */}
-          <h3 className="font-semibold text-foreground line-clamp-2 mb-2 group-hover:text-primary transition-colors">
+          <h3 className="font-semibold text-foreground line-clamp-2 mb-2 group-hover:text-primary transition-colors min-h-[2.5rem]">
             {product.name}
           </h3>
 
@@ -96,7 +103,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
           {/* Price */}
           <div className="mt-auto flex items-center gap-2">
-            {/* ✅ عرض السعر بعد الخصم أولاً إذا كان موجوداً */}
             <span className="text-lg font-bold text-secondary">
               {formatPrice(product.discountPrice || product.price)}
             </span>

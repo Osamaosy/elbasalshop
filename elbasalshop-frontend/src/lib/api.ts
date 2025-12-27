@@ -3,7 +3,6 @@ import axios from 'axios';
 export const API_BASE_URL = 'http://localhost:5000';
 export const API_URL = `${API_BASE_URL}/api`;
 
-// Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -11,7 +10,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -20,12 +19,10 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle errors
+// Response interceptor
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -38,13 +35,19 @@ api.interceptors.response.use(
   }
 );
 
-// ✅ Helper function to get full image URL with better placeholder
+// ✅ Fixed Image URL Handler
 export const getImageUrl = (path: string | null | undefined): string => {
-  if (!path) {
-    // استخدام placeholder من خدمة موثوقة بدلاً من ملف محلي
-    return 'https://placehold.co/400x400/1e40af/ffffff?text=Product+Image';
+  // If no path provided, return placeholder
+  if (!path || path === '/placeholder.svg') {
+    return 'https://placehold.co/600x600/1e40af/ffffff?text=No+Image';
   }
-  if (path.startsWith('http')) return path;
+  
+  // If already full URL, return as is
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  
+  // If local path, combine with base URL
   return `${API_BASE_URL}${path}`;
 };
 
