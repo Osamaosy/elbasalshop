@@ -1,44 +1,31 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+// استيراد إعدادات cloudinary الموجودة بالفعل
+const cloudinary = require('../config/cloudinary');
 
-// Create uploads directory if it doesn't exist
-const uploadDir = 'uploads/products';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
+// إعداد التخزين على Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'elbasalshop-products', // اسم الفولدر على Cloudinary
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 1000, height: 1000, crop: 'limit' }] // خيار إضافي لتحجيم الصور
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname));
-  }
 });
 
-// File filter - only images
+// فلتر الملفات (للتأكد من أنها صور فقط)
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-  
-  if (extname && mimetype) {
+  if (file.mimetype.startsWith('image')) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+    cb(new Error('Not an image! Please upload only images.'), false);
   }
 };
 
-// Multer configuration
 const upload = multer({
   storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB max file size
-  },
-  fileFilter: fileFilter
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
 module.exports = upload;

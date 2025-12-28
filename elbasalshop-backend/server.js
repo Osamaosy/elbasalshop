@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./src/config/db');
+const errorHandler = require('./src/middleware/errorMiddleware');
 
 // Load environment variables
 dotenv.config();
@@ -15,6 +16,9 @@ const app = express();
 // Connect to database
 connectDB();
 
+// Middleware
+app.use(helmet()); // Security headers
+
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
@@ -23,27 +27,18 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-
-// Middleware
 app.use(cors(corsOptions)); // Enable CORS
+
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan('dev')); // Logging
-app.use(helmet()); // Security headers
 
-// Rate limiting - عشان نحمي السيرفر من الطلبات الكتيرة
+// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 دقيقة
-  max: 200, // 200 طلب كحد أقصى كل 15 دقيقة
-  message: {
-    success: false,
-    message: 'طلبات كتير من نفس الـ IP، جرب تاني بعد شوية'
-  },
-  standardHeaders: true, // Return rate limit info in headers
-  legacyHeaders: false, // Disable X-RateLimit-* headers
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
 });
-
-// تطبيق الـ rate limiting على كل الـ API routes
 app.use('/api/', limiter);
 
 // Routes
@@ -59,41 +54,33 @@ app.use('/uploads', express.static('uploads'));
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'مرحباً بك في البصال شوب API 🛍️',
+    message: 'Welcome to Mobile Shop API',
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
       products: '/api/products',
       categories: '/api/categories',
       orders: '/api/orders'
-    },
-    status: 'السيرفر شغال بنجاح ✅'
+    }
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('❌ خطأ:', err.stack);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'حدث خطأ في السيرفر',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+// 👇👇 التعديلات الجديدة هنا 👇👇
+
+// 1. التعامل مع الروابط غير الموجودة (404 Not Found)
+// أي طلب يوصل لهنا معناه ملقاش Route يطابقه فوق
+app.use((req, res, next) => {
+  const error = new Error(`Not Found - ${req.originalUrl}`);
+  res.status(404); // بنحدد الحالة 404
+  next(error);     // بنبعت الخطأ للـ Error Handler
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'الصفحة أو الـ API endpoint مش موجود'
-  });
-});
+// 2. معالج الأخطاء العالمي (Global Error Handler)
+// ده بيستقبل أي خطأ (سواء 404 من فوق أو خطأ داتابيز) ويرد JSON موحد
+app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 السيرفر شغال في وضع ${process.env.NODE_ENV} على البورت ${PORT}`);
-  console.log(`📡 API متاح على: http://localhost:${PORT}/api`);
-  console.log(`📦 الأقسام: http://localhost:${PORT}/api/categories`);
-  console.log(`🛍️  المنتجات: http://localhost:${PORT}/api/products`);
+  console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });

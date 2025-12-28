@@ -1,83 +1,117 @@
 const mongoose = require('mongoose');
+// 1. استيراد موديل العداد
+const Counter = require('./Counter');
 
 const orderSchema = new mongoose.Schema({
-  orderNumber: { type: String, unique: true },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // ... (باقي الـ Schema كما هي بدون تغيير) ...
+  orderNumber: {
+    type: String,
+    unique: true
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   products: [{
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
-    name: String,
-    quantity: { type: Number, required: true },
-    price: { type: Number, required: true },
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true
+    },
+    name: String, 
+    quantity: {
+      type: Number,
+      required: true,
+      min: [1, 'Quantity must be at least 1']
+    },
+    price: {
+      type: Number,
+      required: true
+    },
     image: String
   }],
-  totalAmount: { type: Number, required: true },
+  totalAmount: {
+    type: Number,
+    required: true,
+    min: [0, 'Total amount cannot be negative']
+  },
   status: {
     type: String,
     enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
     default: 'pending'
   },
   customerInfo: {
-    name: { type: String, required: true },
-    phone: { type: String, required: true },
+    name: {
+      type: String,
+      required: true
+    },
+    phone: {
+      type: String,
+      required: true
+    },
     email: String,
-    address: { type: String, required: true },
+    address: {
+      type: String,
+      required: true
+    },
     city: String,
     notes: String
   },
-  whatsappSent: { type: Boolean, default: false },
+  whatsappSent: {
+    type: Boolean,
+    default: false
+  },
+  whatsappSentAt: Date,
+  notes: String,
+  adminNotes: String,
   statusHistory: [{
     status: String,
-    timestamp: { type: Date, default: Date.now }
-  }],
-  notes: String,
-  adminNotes: String
-}, { timestamps: true });
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    note: String
+  }]
+}, {
+  timestamps: true
+});
 
-// ✅ الحل الصحيح لتوليد orderNumber بدون تكرار
+// 2. تعديل الـ pre-save hook لاستخدام العداد الذري
 orderSchema.pre('save', async function(next) {
-  if (this.isNew && !this.orderNumber) {
+  if (this.isNew) {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    while (attempts < maxAttempts) {
-      try {
-        // نعد الطلبات ونضيف timestamp للتفرد
-        const count = await mongoose.model('Order').countDocuments();
-        const timestamp = Date.now().toString().slice(-4); // آخر 4 أرقام من timestamp
-        const orderNum = `ORD-${year}${month}-${String(count + 1).padStart(4, '0')}-${timestamp}`;
-        
-        // نتأكد إن الرقم مش موجود
-        const existing = await mongoose.model('Order').findOne({ orderNumber: orderNum });
-        
-        if (!existing) {
-          this.orderNumber = orderNum;
-          break;
-        }
-        
-        attempts++;
-        // لو الرقم موجود، نستنى ميلي ثانية ونحاول تاني
-        await new Promise(resolve => setTimeout(resolve, 1));
-        
-      } catch (error) {
-        if (attempts === maxAttempts - 1) {
-          // لو فشل كل المحاولات، نستخدم UUID
-          const uuid = Date.now().toString(36) + Math.random().toString(36).substr(2);
-          this.orderNumber = `ORD-${year}${month}-${uuid.toUpperCase()}`;
-          break;
-        }
-      }
+    try {
+      // استخدام findByIdAndUpdate لزيادة العداد بشكل آمن (Atomic Operation)
+      const counter = await Counter.findByIdAndUpdate(
+        { _id: 'orderNumber' }, // معرف العداد
+        { $inc: { seq: 1 } },   // زيادة القيمة بـ 1
+        { new: true, upsert: true } // إنشاء العداد لو مش موجود وإرجاع القيمة الجديدة
+      );
+
+      // استخدام القيمة الجديدة من العداد
+      this.orderNumber = `ORD-${year}${month}-${String(counter.seq).padStart(5, '0')}`;
+      next();
+    } catch (error) {
+      next(error);
     }
+  } else {
+    next();
+  }
+});
+
+// Add status to history when status changes
+orderSchema.pre('save', function(next) {
+  if (this.isModified('status') && !this.isNew) {
+    this.statusHistory.push({
+      status: this.status,
+      timestamp: new Date()
+    });
   }
   next();
 });
-
-// Index لتسريع البحث
-orderSchema.index({ orderNumber: 1 });
-orderSchema.index({ user: 1, createdAt: -1 });
-orderSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Order', orderSchema);

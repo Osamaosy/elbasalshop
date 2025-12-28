@@ -1,6 +1,4 @@
 const Product = require('../models/Product');
-const Category = require('../models/Category');
-const mongoose = require('mongoose');
 
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
@@ -18,68 +16,39 @@ const getProducts = async (req, res) => {
       sort = '-createdAt',
       inStock
     } = req.query;
-    
-    // Build filter
-    let filter = { isAvailable: true };
-    
-    // ✅ 1. إصلاح مشكلة الأقسام (Category Fix)
-    if (category) {
-      if (mongoose.Types.ObjectId.isValid(category)) {
-        // لو القيمة عبارة عن ID صحيح، ابحث بيه
-        filter.category = category;
-      } else {
-        // لو القيمة اسم (Slug/Name)، ابحث عن القسم الأول وهات الـ ID بتاعه
-        const categoryDoc = await Category.findOne({
-          $or: [
-            { slug: category },
-            { type: category },
-            { name: { $regex: category, $options: 'i' } }
-          ]
-        });
 
-        if (categoryDoc) {
-          filter.category = categoryDoc._id;
-        } else {
-          // لو القسم مش موجود، رجع قائمة فاضية بدل ما تضرب Error
-          return res.status(200).json({
-            success: true,
-            data: { products: [], pagination: {} }
-          });
-        }
-      }
-    }
-    
-    if (brand) filter.brand = { $regex: brand, $options: 'i' };
-    
+    // Build filter
+    const filter = { isAvailable: true };
+
+    if (category) filter.category = category;
+    if (brand) filter.brand = new RegExp(brand, 'i');
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
-    
     if (inStock === 'true') filter.stock = { $gt: 0 };
-    
     if (search) {
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { brand: { $regex: search, $options: 'i' } }
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { brand: new RegExp(search, 'i') }
       ];
     }
-    
+
     // Pagination
-    const skip = (Number(page) - 1) * Number(limit);
-    
+    const skip = (page - 1) * limit;
+
     // Get products
     const products = await Product.find(filter)
       .populate('category', 'name type')
       .sort(sort)
       .limit(Number(limit))
       .skip(skip);
-    
+
     // Get total count
     const total = await Product.countDocuments(filter);
-    
+
     res.json({
       success: true,
       data: {
@@ -92,7 +61,7 @@ const getProducts = async (req, res) => {
         }
       }
     });
-    
+
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({
@@ -110,23 +79,23 @@ const getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
       .populate('category', 'name type');
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
       });
     }
-    
+
     // Increment views
     product.views += 1;
     await product.save();
-    
+
     res.json({
       success: true,
       data: { product }
     });
-    
+
   } catch (error) {
     console.error('Get product error:', error);
     res.status(500).json({
@@ -143,30 +112,43 @@ const getProductById = async (req, res) => {
 const createProduct = async (req, res) => {
   try {
     const productData = req.body;
-    
-    // Parse specifications if it's a string
-    if (typeof productData.specifications === 'string') {
-        try {
-            productData.specifications = JSON.parse(productData.specifications);
-        } catch (e) {
-            productData.specifications = {};
-        }
+    let images = [];
+
+    // 1. التعامل مع الصور المرفوعة (تأتي من Multer بعد الرفع لـ Cloudinary)
+    if (req.files && req.files.length > 0) {
+      // Cloudinary يضع رابط الصورة في path
+      const uploadedImages = req.files.map(file => file.path);
+      images = [...images, ...uploadedImages];
     }
 
-    // Handle uploaded images
-    if (req.files && req.files.length > 0) {
-      productData.images = req.files.map(file => `/uploads/products/${file.filename}`);
-      productData.mainImage = productData.images[0];
+    // 2. التعامل مع روابط الصور الخارجية (تأتي كـ String أو Array في الـ body)
+    if (req.body.images) {
+      let externalImages = [];
+      // التأكد هل هي رابط واحد أم مجموعة روابط
+      if (typeof req.body.images === 'string') {
+        externalImages = [req.body.images];
+      } else if (Array.isArray(req.body.images)) {
+        externalImages = req.body.images;
+      }
+      images = [...images, ...externalImages];
     }
-    
+
+    // دمج الصور النهائية
+    productData.images = images;
+
+    // تعيين الصورة الرئيسية
+    if (images.length > 0) {
+      productData.mainImage = images[0];
+    }
+
     const product = await Product.create(productData);
-    
+
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
       data: { product }
     });
-    
+
   } catch (error) {
     console.error('Create product error:', error);
     res.status(500).json({
@@ -183,46 +165,64 @@ const createProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     let product = await Product.findById(req.params.id);
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
       });
     }
-    
-    const updateData = req.body;
 
-    // Parse specifications
-    if (typeof updateData.specifications === 'string') {
-        try {
-            updateData.specifications = JSON.parse(updateData.specifications);
-        } catch (e) {
-            // ignore error
-        }
-    }
-    
-    // Handle new uploaded images
+    const updateData = req.body;
+    let newImages = [];
+
+    // 1. التعامل مع الصور المرفوعة الجديدة
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => `/uploads/products/${file.filename}`);
-      updateData.images = [...(product.images || []), ...newImages];
-      if (!updateData.mainImage) {
-        updateData.mainImage = updateData.images[0];
-      }
+      const uploadedImages = req.files.map(file => file.path);
+      newImages = [...newImages, ...uploadedImages];
     }
-    
+
+    // 2. التعامل مع الروابط الجديدة
+    // ملاحظة: في التحديث، الـ Frontend عادة بيبعت الصور القديمة + الجديدة
+    // هنا سنفترض أننا نضيف صوراً جديدة للقائمة الموجودة
+    if (req.body.newImages) { // استخدمنا اسم field مختلف قليلاً للتمييز
+      let externalImages = [];
+      if (typeof req.body.newImages === 'string') {
+        externalImages = [req.body.newImages];
+      } else if (Array.isArray(req.body.newImages)) {
+        externalImages = req.body.newImages;
+      }
+      newImages = [...newImages, ...externalImages];
+    }
+
+    // إذا تم إرسال صور، نقوم بإضافتها أو استبدالها حسب المنطق الذي تفضله
+    // السيناريو الأغلب: إضافة الصور الجديدة للقديمة
+    if (newImages.length > 0) {
+      updateData.images = [...(product.images || []), ...newImages];
+    }
+
+    // إذا أراد المستخدم استبدال كل الصور بروابط خارجية فقط (سيناريو آخر)
+    if (req.body.images && Array.isArray(req.body.images) && req.files.length === 0) {
+      updateData.images = req.body.images;
+    }
+
+    // تحديث الصورة الرئيسية إذا لزم الأمر
+    if (updateData.images && updateData.images.length > 0 && !updateData.mainImage) {
+      updateData.mainImage = updateData.images[0];
+    }
+
     product = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
-    
+
     res.json({
       success: true,
       message: 'Product updated successfully',
       data: { product }
     });
-    
+
   } catch (error) {
     console.error('Update product error:', error);
     res.status(500).json({
@@ -232,28 +232,27 @@ const updateProduct = async (req, res) => {
     });
   }
 };
-
 // @desc    Delete product
 // @route   DELETE /api/products/:id
 // @access  Private/Admin
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    
+
     if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
       });
     }
-    
+
     await product.deleteOne();
-    
+
     res.json({
       success: true,
       message: 'Product deleted successfully'
     });
-    
+
   } catch (error) {
     console.error('Delete product error:', error);
     res.status(500).json({
@@ -264,7 +263,6 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// ✅ 2. التأكد من وجود دالة المنتجات المميزة
 // @desc    Get featured products
 // @route   GET /api/products/featured
 // @access  Public
@@ -274,12 +272,12 @@ const getFeaturedProducts = async (req, res) => {
       .populate('category', 'name type')
       .limit(8)
       .sort('-createdAt');
-    
+
     res.json({
       success: true,
       data: { products }
     });
-    
+
   } catch (error) {
     console.error('Get featured products error:', error);
     res.status(500).json({
@@ -290,7 +288,6 @@ const getFeaturedProducts = async (req, res) => {
   }
 };
 
-// ✅ 3. تصدير جميع الدوال بشكل صحيح
 module.exports = {
   getProducts,
   getProductById,
