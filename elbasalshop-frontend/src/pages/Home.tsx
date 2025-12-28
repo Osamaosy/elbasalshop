@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Smartphone, Headphones, BatteryCharging, Sparkles, Truck, Shield, CreditCard } from 'lucide-react';
+import { ArrowLeft, Smartphone, Headphones, BatteryCharging, Sparkles, Truck, Shield, CreditCard, Tag, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ProductGrid from '@/components/products/ProductGrid';
 import api from '@/lib/api';
@@ -13,47 +13,44 @@ const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [productsRes, categoriesRes] = await Promise.all([
-          api.get('/products?limit=8'),
-          api.get('/categories'),
-        ]);
-
-        // ✅ الوصول الصحيح للبيانات (data.data.products)
-        const products = productsRes.data.data?.products || productsRes.data.products || [];
-        
-        // ✅ استخدام isFeatured بدلاً من featured
-        setFeaturedProducts(products.filter((p: Product) => p.isFeatured).slice(0, 4));
-        setNewProducts(products.slice(0, 8));
-        
-        // ✅ الوصول الصحيح للبيانات (data.data.categories)
-        setCategories(categoriesRes.data.data?.categories || categoriesRes.data.categories || []);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        // Set demo data for preview
-        setNewProducts([]);
-        setCategories([
-          { _id: '1', name: 'موبايلات', slug: 'mobiles', type: 'mobile', description: 'أحدث الهواتف الذكية', isActive: true, order: 0 },
-          { _id: '2', name: 'إكسسوارات', slug: 'accessories', type: 'accessory', description: 'ملحقات الموبايل', isActive: true, order: 1 },
-          { _id: '3', name: 'جرابات', slug: 'covers', type: 'accessory', description: 'جرابات وأغطية', isActive: true, order: 2 },
-          { _id: '4', name: 'شواحن', slug: 'chargers', type: 'accessory', description: 'شواحن وكوابل', isActive: true, order: 3 },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchData();
   }, []);
 
-  const categoryIcons: Record<string, React.ReactNode> = {
-    mobiles: <Smartphone className="w-8 h-8" />,
-    mobile: <Smartphone className="w-8 h-8" />,
-    accessories: <Headphones className="w-8 h-8" />,
-    accessory: <Headphones className="w-8 h-8" />,
-    chargers: <BatteryCharging className="w-8 h-8" />,
-    covers: <Sparkles className="w-8 h-8" />,
+  const fetchData = async () => {
+    try {
+      const [productsRes, categoriesRes] = await Promise.all([
+        api.get('/products?limit=8'),
+        api.get('/categories'),
+      ]);
+
+      const products = productsRes.data.data?.products || productsRes.data.products || [];
+      
+      setFeaturedProducts(products.filter((p: Product) => p.isFeatured).slice(0, 4));
+      setNewProducts(products.slice(0, 8));
+      
+      // ✅ فقط الأقسام النشطة من الـ API
+      const cats = categoriesRes.data.data?.categories || categoriesRes.data.categories || [];
+      setCategories(cats.filter((c: Category) => c.isActive).sort((a, b) => a.order - b.order));
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setNewProducts([]);
+      setCategories([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ أيقونات ديناميكية بناءً على نوع القسم
+  const getCategoryIcon = (type: string, slug: string) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      mobile: <Smartphone className="w-8 h-8" />,
+      accessory: <Headphones className="w-8 h-8" />,
+      charger: <BatteryCharging className="w-8 h-8" />,
+      cover: <Shield className="w-8 h-8" />,
+    };
+
+    // محاولة مطابقة بالـ type أولاً، ثم بالـ slug
+    return iconMap[type] || iconMap[slug.toLowerCase()] || <Tag className="w-8 h-8" />;
   };
 
   return (
@@ -106,7 +103,6 @@ const Home: React.FC = () => {
           </div>
         </div>
 
-        {/* Wave Decoration */}
         <div className="absolute bottom-0 left-0 right-0">
           <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
             <path d="M0 120L60 110C120 100 240 80 360 70C480 60 600 60 720 65C840 70 960 80 1080 85C1200 90 1320 90 1380 90L1440 90V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z" fill="hsl(210 20% 98%)"/>
@@ -158,51 +154,52 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Categories */}
-      <section className="py-12 bg-background">
-        <div className="container mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-foreground">تصفح الأقسام</h2>
-              <p className="text-muted-foreground mt-1">اختر القسم اللي تحتاجه</p>
-            </div>
-            <Link to="/shop">
-              <Button variant="ghost" className="gap-1">
-                عرض الكل
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* ✅ عرض الأقسام النشطة فقط */}
-            {(categories.length > 0 ? categories.filter(c => c.isActive) : [
-              { _id: '1', name: 'موبايلات', slug: 'mobile', type: 'mobile' as const, isActive: true, order: 0 },
-              { _id: '2', name: 'إكسسوارات', slug: 'accessories', type: 'accessory' as const, isActive: true, order: 1 },
-              { _id: '3', name: 'جرابات', slug: 'covers', type: 'accessory' as const, isActive: true, order: 2 },
-              { _id: '4', name: 'شواحن', slug: 'chargers', type: 'accessory' as const, isActive: true, order: 3 },
-            ]).map((category) => (
-              <Link
-                key={category._id}
-                to={`/shop?category=${category.slug}`}
-                className="group"
-              >
-                <div className="relative bg-card border border-border rounded-2xl p-6 text-center hover:border-primary hover:shadow-lg transition-all duration-300 overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <div className="relative z-10">
-                    <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-                      {categoryIcons[category.slug] || categoryIcons[category.type] || <Sparkles className="w-8 h-8" />}
-                    </div>
-                    <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
-                      {category.name}
-                    </h3>
-                  </div>
-                </div>
+      {/* Categories - من الـ API فقط */}
+      {categories.length > 0 && (
+        <section className="py-12 bg-background">
+          <div className="container mx-auto">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-foreground">تصفح الأقسام</h2>
+                <p className="text-muted-foreground mt-1">اختر القسم اللي تحتاجه</p>
+              </div>
+              <Link to="/shop">
+                <Button variant="ghost" className="gap-1">
+                  عرض الكل
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
               </Link>
-            ))}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {categories.map((category) => (
+                <Link
+                  key={category._id}
+                  to={`/shop?category=${category.slug}`}
+                  className="group"
+                >
+                  <div className="relative bg-card border border-border rounded-2xl p-6 text-center hover:border-primary hover:shadow-lg transition-all duration-300 overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="relative z-10">
+                      <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                        {getCategoryIcon(category.type, category.slug)}
+                      </div>
+                      <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
+                        {category.name}
+                      </h3>
+                      {category.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {category.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Featured Products */}
       {featuredProducts.length > 0 && (
@@ -244,14 +241,14 @@ const Home: React.FC = () => {
 
           {newProducts.length > 0 ? (
             <ProductGrid products={newProducts} isLoading={isLoading} />
-          ) : (
+          ) : !isLoading ? (
             <div className="text-center py-16 bg-card rounded-2xl border border-border">
               <Smartphone className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-bold text-foreground mb-2">قريباً...</h3>
               <p className="text-muted-foreground mb-4">نجهز لكم أفضل المنتجات</p>
               <p className="text-sm text-muted-foreground">تأكد من تشغيل الـ Backend على المنفذ 5000</p>
             </div>
-          )}
+          ) : null}
         </div>
       </section>
 

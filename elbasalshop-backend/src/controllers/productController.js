@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const Category = require('../models/Category');
 
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
@@ -20,7 +21,35 @@ const getProducts = async (req, res) => {
     // Build filter
     const filter = { isAvailable: true };
 
-    if (category) filter.category = category;
+    // ✅ دعم البحث بالـ slug أو _id
+    if (category) {
+      // محاولة البحث بالـ slug أولاً
+      const categoryDoc = await Category.findOne({ 
+        $or: [
+          { slug: category },
+          { _id: category }
+        ]
+      });
+      
+      if (categoryDoc) {
+        filter.category = categoryDoc._id;
+      } else {
+        // لو ماتلقاش category، نرجع array فاضي
+        return res.json({
+          success: true,
+          data: {
+            products: [],
+            pagination: {
+              page: Number(page),
+              limit: Number(limit),
+              total: 0,
+              pages: 0
+            }
+          }
+        });
+      }
+    }
+
     if (brand) filter.brand = new RegExp(brand, 'i');
     if (minPrice || maxPrice) {
       filter.price = {};
@@ -41,7 +70,7 @@ const getProducts = async (req, res) => {
 
     // Get products
     const products = await Product.find(filter)
-      .populate('category', 'name type')
+      .populate('category', 'name type slug')
       .sort(sort)
       .limit(Number(limit))
       .skip(skip);
@@ -78,7 +107,7 @@ const getProducts = async (req, res) => {
 const getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate('category', 'name type');
+      .populate('category', 'name type slug');
 
     if (!product) {
       return res.status(404).json({
@@ -114,17 +143,15 @@ const createProduct = async (req, res) => {
     const productData = req.body;
     let images = [];
 
-    // 1. التعامل مع الصور المرفوعة (تأتي من Multer بعد الرفع لـ Cloudinary)
+    // 1. التعامل مع الصور المرفوعة
     if (req.files && req.files.length > 0) {
-      // Cloudinary يضع رابط الصورة في path
       const uploadedImages = req.files.map(file => file.path);
       images = [...images, ...uploadedImages];
     }
 
-    // 2. التعامل مع روابط الصور الخارجية (تأتي كـ String أو Array في الـ body)
+    // 2. التعامل مع روابط الصور الخارجية
     if (req.body.images) {
       let externalImages = [];
-      // التأكد هل هي رابط واحد أم مجموعة روابط
       if (typeof req.body.images === 'string') {
         externalImages = [req.body.images];
       } else if (Array.isArray(req.body.images)) {
@@ -133,10 +160,8 @@ const createProduct = async (req, res) => {
       images = [...images, ...externalImages];
     }
 
-    // دمج الصور النهائية
     productData.images = images;
 
-    // تعيين الصورة الرئيسية
     if (images.length > 0) {
       productData.mainImage = images[0];
     }
@@ -176,16 +201,12 @@ const updateProduct = async (req, res) => {
     const updateData = req.body;
     let newImages = [];
 
-    // 1. التعامل مع الصور المرفوعة الجديدة
     if (req.files && req.files.length > 0) {
       const uploadedImages = req.files.map(file => file.path);
       newImages = [...newImages, ...uploadedImages];
     }
 
-    // 2. التعامل مع الروابط الجديدة
-    // ملاحظة: في التحديث، الـ Frontend عادة بيبعت الصور القديمة + الجديدة
-    // هنا سنفترض أننا نضيف صوراً جديدة للقائمة الموجودة
-    if (req.body.newImages) { // استخدمنا اسم field مختلف قليلاً للتمييز
+    if (req.body.newImages) {
       let externalImages = [];
       if (typeof req.body.newImages === 'string') {
         externalImages = [req.body.newImages];
@@ -195,18 +216,14 @@ const updateProduct = async (req, res) => {
       newImages = [...newImages, ...externalImages];
     }
 
-    // إذا تم إرسال صور، نقوم بإضافتها أو استبدالها حسب المنطق الذي تفضله
-    // السيناريو الأغلب: إضافة الصور الجديدة للقديمة
     if (newImages.length > 0) {
       updateData.images = [...(product.images || []), ...newImages];
     }
 
-    // إذا أراد المستخدم استبدال كل الصور بروابط خارجية فقط (سيناريو آخر)
     if (req.body.images && Array.isArray(req.body.images) && req.files.length === 0) {
       updateData.images = req.body.images;
     }
 
-    // تحديث الصورة الرئيسية إذا لزم الأمر
     if (updateData.images && updateData.images.length > 0 && !updateData.mainImage) {
       updateData.mainImage = updateData.images[0];
     }
@@ -232,6 +249,7 @@ const updateProduct = async (req, res) => {
     });
   }
 };
+
 // @desc    Delete product
 // @route   DELETE /api/products/:id
 // @access  Private/Admin
@@ -269,7 +287,7 @@ const deleteProduct = async (req, res) => {
 const getFeaturedProducts = async (req, res) => {
   try {
     const products = await Product.find({ isFeatured: true, isAvailable: true })
-      .populate('category', 'name type')
+      .populate('category', 'name type slug')
       .limit(8)
       .sort('-createdAt');
 

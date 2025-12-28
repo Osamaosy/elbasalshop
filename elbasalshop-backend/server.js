@@ -33,11 +33,12 @@ app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan('dev')); // Logging
 
-// Rate limiting
+// ✅ Rate limiting - معدل للـ development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // ✅ 1000 في الـ dev
+  message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => process.env.NODE_ENV === 'development' // ✅ تخطي في الـ dev تماماً
 });
 app.use('/api/', limiter);
 
@@ -65,18 +66,14 @@ app.get('/', (req, res) => {
   });
 });
 
-// 👇👇 التعديلات الجديدة هنا 👇👇
-
-// 1. التعامل مع الروابط غير الموجودة (404 Not Found)
-// أي طلب يوصل لهنا معناه ملقاش Route يطابقه فوق
+// 404 Handler
 app.use((req, res, next) => {
   const error = new Error(`Not Found - ${req.originalUrl}`);
-  res.status(404); // بنحدد الحالة 404
-  next(error);     // بنبعت الخطأ للـ Error Handler
+  res.status(404);
+  next(error);
 });
 
-// 2. معالج الأخطاء العالمي (Global Error Handler)
-// ده بيستقبل أي خطأ (سواء 404 من فوق أو خطأ داتابيز) ويرد JSON موحد
+// Global Error Handler
 app.use(errorHandler);
 
 // Start server

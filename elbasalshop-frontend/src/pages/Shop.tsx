@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProductGrid from '@/components/products/ProductGrid';
@@ -36,7 +36,10 @@ const Shop: React.FC = () => {
       ]);
 
       setProducts(productsRes.data.data?.products || productsRes.data.products || []);
-      setCategories(categoriesRes.data.data?.categories || categoriesRes.data.categories || []);
+      
+      // ✅ فقط الأقسام النشطة مرتبة
+      const cats = categoriesRes.data.data?.categories || categoriesRes.data.categories || [];
+      setCategories(cats.filter((c: Category) => c.isActive).sort((a: Category, b: Category) => a.order - b.order));
     } catch (error) {
       console.error('Error fetching data:', error);
       setProducts([]);
@@ -74,13 +77,22 @@ const Shop: React.FC = () => {
     setSearchParams(new URLSearchParams());
   };
 
+  // ✅ الحصول على اسم القسم المحدد
+  const getSelectedCategoryName = () => {
+    if (!selectedCategory) return 'جميع المنتجات';
+    const cat = categories.find(c => c.slug === selectedCategory);
+    return cat?.name || 'جميع المنتجات';
+  };
+
   return (
     <div className="min-h-screen bg-background animate-fade-in">
       {/* Header */}
       <div className="bg-card border-b border-border">
         <div className="container mx-auto py-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">المتجر</h1>
-          <p className="text-muted-foreground mt-1">تصفح جميع المنتجات</p>
+          <p className="text-muted-foreground mt-1">
+            {getSelectedCategoryName()} ({products.length} منتج)
+          </p>
         </div>
       </div>
 
@@ -101,7 +113,7 @@ const Shop: React.FC = () => {
                 >
                   جميع المنتجات
                 </button>
-                {categories.filter(c => c.isActive).map((category) => (
+                {categories.map((category) => (
                   <button
                     key={category._id}
                     onClick={() => handleCategoryChange(category.slug)}
@@ -159,7 +171,7 @@ const Shop: React.FC = () => {
 
             {/* Mobile Filters */}
             {showFilters && (
-              <div className="lg:hidden bg-card rounded-2xl border border-border p-6">
+              <div className="lg:hidden bg-card rounded-2xl border border-border p-6 animate-slide-up">
                 <h3 className="font-bold text-foreground mb-4">الأقسام</h3>
                 <div className="space-y-2">
                   <button
@@ -175,7 +187,7 @@ const Shop: React.FC = () => {
                   >
                     جميع المنتجات
                   </button>
-                  {categories.filter(c => c.isActive).map((category) => (
+                  {categories.map((category) => (
                     <button
                       key={category._id}
                       onClick={() => {
@@ -197,21 +209,30 @@ const Shop: React.FC = () => {
 
             {/* Results */}
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-muted-foreground">
-                  {isLoading ? 'جاري التحميل...' : `${products.length} منتج`}
-                </p>
-              </div>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-muted-foreground">
+                      {products.length} منتج
+                      {selectedCategory && ` في ${getSelectedCategoryName()}`}
+                    </p>
+                  </div>
 
-              <ProductGrid
-                products={products}
-                isLoading={isLoading}
-                emptyMessage={
-                  searchQuery || selectedCategory
-                    ? 'لا توجد نتائج مطابقة'
-                    : 'لا توجد منتجات'
-                }
-              />
+                  <ProductGrid
+                    products={products}
+                    isLoading={isLoading}
+                    emptyMessage={
+                      searchQuery || selectedCategory
+                        ? 'لا توجد نتائج مطابقة للبحث'
+                        : 'لا توجد منتجات'
+                    }
+                  />
+                </>
+              )}
             </div>
           </div>
         </div>
