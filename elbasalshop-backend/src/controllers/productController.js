@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-
+const mongoose = require('mongoose');
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
 // @access  Public
@@ -21,20 +21,28 @@ const getProducts = async (req, res) => {
     // Build filter
     const filter = { isAvailable: true };
 
-    // ✅ دعم البحث بالـ slug أو _id
+    // ✅ تصحيح منطق البحث بالـ slug أو _id
     if (category) {
-      // محاولة البحث بالـ slug أولاً
-      const categoryDoc = await Category.findOne({ 
-        $or: [
-          { slug: category },
-          { _id: category }
-        ]
-      });
+      let categoryQuery;
+
+      // 2. التحقق مما إذا كان النص هو ObjectId صالح
+      if (mongoose.isValidObjectId(category)) {
+        categoryQuery = { 
+          $or: [
+            { slug: category },
+            { _id: category }
+          ]
+        };
+      } else {
+        // إذا لم يكن ObjectId (مثل "accessories") نبحث بالـ slug فقط لتجنب CastError
+        categoryQuery = { slug: category };
+      }
+
+      const categoryDoc = await Category.findOne(categoryQuery);
       
       if (categoryDoc) {
         filter.category = categoryDoc._id;
       } else {
-        // لو ماتلقاش category، نرجع array فاضي
         return res.json({
           success: true,
           data: {

@@ -84,7 +84,7 @@ const Home: React.FC = () => {
                     <ArrowLeft className="w-5 h-5" />
                   </Button>
                 </Link>
-                <Link to="/shop?category=mobile">
+                <Link to="/shop?category=mobiles">
                   <Button variant="outline" size="xl" className="w-full sm:w-auto border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary">
                     عروض الموبايلات
                   </Button>
