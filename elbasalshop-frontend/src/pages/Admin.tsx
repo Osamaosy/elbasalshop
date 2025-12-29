@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Package, Plus, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X, Tag, Edit, Trash } from 'lucide-react';
+import { Package, Plus, ShoppingBag, TrendingUp, Clock, CheckCircle, Truck, XCircle, Loader2, Upload, X, Tag, Edit, Trash, Eye, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { formatPrice, getImageUrl } from '@/lib/api';
 import { Order, Product, Category } from '@/types';
 import toast from 'react-hot-toast';
+// ... existing imports
+// 1. نضيف استيراد Textarea
+import { Textarea } from '@/components/ui/textarea';
 
 const statusConfig = {
   pending: { label: 'قيد الانتظار', icon: Clock, color: 'bg-warning text-foreground' },
@@ -19,6 +22,8 @@ const statusConfig = {
 
 const Admin: React.FC = () => {
   const { isAdmin, isLoading: authLoading } = useAuth();
+  const [imageUrls, setImageUrls] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'categories' | 'add-product' | 'add-category'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -57,7 +62,7 @@ const Admin: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const results = await Promise.allSettled([
         api.get('/orders/admin/all'),
@@ -101,7 +106,7 @@ const Admin: React.FC = () => {
   const updateOrderStatus = async (orderId: string, status: string) => {
     try {
       await api.put(`/orders/${orderId}/status`, { status });
-      setOrders(orders.map(order => 
+      setOrders(orders.map(order =>
         order._id === orderId ? { ...order, status: status as Order['status'] } : order
       ));
       toast.success('تم تحديث حالة الطلب');
@@ -143,9 +148,22 @@ const Admin: React.FC = () => {
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!productForm.name || !productForm.price || !productForm.category || !productForm.stock) {
       toast.error('يرجى ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    // 👇👇 بداية التعديل: التحقق من منطقية سعر الخصم 👇👇
+    if (productForm.discountPrice && Number(productForm.discountPrice) >= Number(productForm.price)) {
+      toast.error('عفواً، يجب أن يكون السعر بعد الخصم أقل من السعر الأساسي');
+      return;
+    }
+    // 👆👆 نهاية التعديل 👆👆
+
+    // التحقق من وجود صور (الكود الذي أضفناه سابقاً)
+    if (productImages.length === 0 && !imageUrls.trim()) {
+      toast.error('يجب إضافة صورة واحدة على الأقل (ملف أو رابط)');
       return;
     }
 
@@ -161,16 +179,27 @@ const Admin: React.FC = () => {
       if (productForm.brand) formData.append('brand', productForm.brand);
       formData.append('stock', productForm.stock);
       formData.append('isFeatured', String(productForm.isFeatured));
-      
+
+      // 1. إضافة الصور المرفوعة (الملفات)
       productImages.forEach(image => {
         formData.append('images', image);
       });
+
+      // 2. إضافة روابط الصور الخارجية
+      if (imageUrls.trim()) {
+        const urls = imageUrls.split('\n').filter(url => url.trim() !== '');
+        urls.forEach(url => {
+          formData.append('images', url.trim());
+        });
+      }
 
       await api.post('/products', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
       toast.success('تم إضافة المنتج بنجاح');
+
+      // تصفير النموذج
       setProductForm({
         name: '',
         description: '',
@@ -182,6 +211,8 @@ const Admin: React.FC = () => {
         isFeatured: false,
       });
       setProductImages([]);
+      setImageUrls(''); // تصفير حقل الروابط
+
       fetchData();
       setActiveTab('products');
     } catch (error: any) {
@@ -194,7 +225,7 @@ const Admin: React.FC = () => {
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!categoryForm.name || !categoryForm.type) {
       toast.error('يرجى ملء جميع الحقول المطلوبة');
       return;
@@ -252,8 +283,36 @@ const Admin: React.FC = () => {
       toast.error(error.response?.data?.message || 'فشل حذف المنتج');
     }
   };
+  const handleQuickShopSale = async (product: Product) => {
+    // 1. التحقق من توفر المخزون
+    if (product.stock <= 0) {
+      toast.error('المنتج غير متوفر (المخزون 0)');
+      return;
+    }
+
+    // 2. رسالة تأكيد لمنع الضغط بالخطأ
+    if (!confirm(`هل تريد تسجيل بيع قطعة واحدة من "${product.name}" داخل المحل؟`)) return;
+
+    try {
+      // 3. إرسال التحديث للسيرفر (إنقاص المخزون بـ 1)
+      await api.put(`/products/${product._id}`, {
+        stock: product.stock - 1
+      });
+      
+      // 4. تحديث الواجهة فوراً دون إعادة التحميل
+      setProducts(products.map(p => 
+        p._id === product._id ? { ...p, stock: p.stock - 1 } : p
+      ));
+      
+      toast.success('تم خصم القطعة من المخزون بنجاح');
+    } catch (error: any) {
+      console.error('Error updating stock:', error);
+      toast.error('حدث خطأ أثناء تحديث المخزون');
+    }
+  };
 
   if (authLoading) {
+    // دالة تسجيل بيع قطعة من داخل المحل
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-12 h-12 text-primary animate-spin" />
@@ -428,9 +487,8 @@ const Admin: React.FC = () => {
                               <button
                                 key={key}
                                 onClick={() => updateOrderStatus(order._id, key)}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                                  order.status === key ? config.color : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                }`}
+                                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${order.status === key ? config.color : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                  }`}
                               >
                                 {config.label}
                               </button>
@@ -444,7 +502,7 @@ const Admin: React.FC = () => {
               </div>
             )}
 
-            {/* Products Tab */}
+{/* Products Tab */}
             {activeTab === 'products' && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {products.length === 0 ? (
@@ -464,18 +522,43 @@ const Admin: React.FC = () => {
                             (e.target as HTMLImageElement).src = '/placeholder.svg';
                           }}
                         />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        
+                        {/* 👇👇 التعديل الجديد: أزرار البيع والحذف 👇👇 */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                          
+                          {/* زر البيع من المحل (أخضر) */}
                           <Button
                             size="icon"
-                            variant="secondary"
-                            onClick={() => handleDeleteProduct(product._id)}
+                            onClick={() => handleQuickShopSale(product)}
+                            title="بيع قطعة في المحل"
+                            className="bg-green-600 hover:bg-green-700 text-white border-none h-9 w-9 rounded-full shadow-lg hover:scale-110 transition-transform"
                           >
-                            <Trash className="w-4 h-4" />
+                            <Store className="w-5 h-5" />
                           </Button>
+
+                          {/* زر الحذف (أحمر) */}
+                          <Button
+                            size="icon"
+                            onClick={() => handleDeleteProduct(product._id)}
+                            title="حذف المنتج"
+                            className="bg-red-600 hover:bg-red-700 text-white border-none h-9 w-9 rounded-full shadow-lg hover:scale-110 transition-transform"
+                          >
+                            <Trash className="w-5 h-5" />
+                          </Button>
+                          
                         </div>
+                        {/* 👆👆 نهاية التعديل 👆👆 */}
+
                       </div>
                       <div className="p-3">
                         <h3 className="font-semibold text-sm line-clamp-1">{product.name}</h3>
+                        
+                        {/* عداد المشاهدات (حافظت عليه كما هو) */}
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1 mb-1">
+                          <Eye className="w-3 h-3" />
+                          <span>{product.views || 0} مشاهدة</span>
+                        </div>
+
                         <p className="text-secondary font-bold">{formatPrice(product.price)}</p>
                         <p className="text-xs text-muted-foreground">المخزون: {product.stock}</p>
                         {product.isFeatured && (
@@ -522,9 +605,8 @@ const Admin: React.FC = () => {
                         )}
                         <p><span className="text-muted-foreground">الترتيب:</span> {category.order}</p>
                         <p>
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs ${
-                            category.isActive ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
-                          }`}>
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs ${category.isActive ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+                            }`}>
                             {category.isActive ? 'نشط' : 'معطل'}
                           </span>
                         </p>
@@ -540,7 +622,7 @@ const Admin: React.FC = () => {
               <div className="max-w-2xl mx-auto">
                 <div className="bg-card rounded-2xl border border-border p-6">
                   <h2 className="text-xl font-bold text-foreground mb-6">إضافة منتج جديد</h2>
-                  
+
                   <form onSubmit={handleAddProduct} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">اسم المنتج *</label>
@@ -646,44 +728,77 @@ const Admin: React.FC = () => {
                       </label>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium mb-2">صور المنتج (حد أقصى 5)</label>
-                      <div className="border-2 border-dashed border-input rounded-lg p-6 text-center">
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={handleImageChange}
-                          className="hidden"
-                          id="product-images"
-                        />
-                        <label htmlFor="product-images" className="cursor-pointer">
-                          <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">اضغط لرفع الصور</p>
-                        </label>
-                      </div>
-                      
-                      {productImages.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-4">
-                          {productImages.map((image, index) => (
-                            <div key={index} className="relative w-20 h-20">
-                              <img
-                                src={URL.createObjectURL(image)}
-                                alt={`Preview ${index}`}
-                                className="w-full h-full object-cover rounded-lg"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeImage(index)}
-                                className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
+
+
+                    <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                      <h3 className="font-semibold text-sm">صور المنتج</h3>
+
+                      {/* خيار 1: رفع ملفات */}
+                      <div>
+                        <label className="block text-sm font-medium mb-2">رفع صور من الجهاز</label>
+                        <div className="border-2 border-dashed border-input rounded-lg p-6 text-center bg-background">
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className="hidden"
+                            id="product-images"
+                          />
+                          <label htmlFor="product-images" className="cursor-pointer block">
+                            <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">اضغط لاختيار صور (Max 5)</p>
+                          </label>
                         </div>
-                      )}
+                        {/* عرض الصور المرفوعة */}
+                        {productImages.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {productImages.map((image, index) => (
+                              <div key={index} className="relative w-16 h-16">
+                                <img
+                                  src={URL.createObjectURL(image)}
+                                  alt={`Preview ${index}`}
+                                  className="w-full h-full object-cover rounded-md border"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(index)}
+                                  className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center text-xs"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-background px-2 text-muted-foreground">أو / و</span>
+                        </div>
+                      </div>
+
+                      {/* خيار 2: روابط خارجية */}
+                      <div>
+                        <label className="block text-sm font-medium mb-2">روابط صور خارجية (اختياري)</label>
+                        <Textarea
+                          placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                          value={imageUrls}
+                          onChange={(e) => setImageUrls(e.target.value)}
+                          className="font-mono text-xs"
+                          rows={3}
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          ضع كل رابط في سطر منفصل. يمكن استخدام هذه الروابط مع الصور المرفوعة أعلاه.
+                        </p>
+                      </div>
                     </div>
+
+
 
                     <Button
                       type="submit"
@@ -711,7 +826,7 @@ const Admin: React.FC = () => {
               <div className="max-w-xl mx-auto">
                 <div className="bg-card rounded-2xl border border-border p-6">
                   <h2 className="text-xl font-bold text-foreground mb-6">إضافة قسم جديد</h2>
-                  
+
                   <form onSubmit={handleAddCategory} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">اسم القسم *</label>

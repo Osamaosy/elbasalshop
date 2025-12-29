@@ -29,11 +29,17 @@ const Navbar: React.FC = () => {
         <div className="flex items-center justify-between py-3 gap-4">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-10 h-10 bg-gradient-nile rounded-xl flex items-center justify-center shadow-md">
-              <span className="text-primary-foreground font-bold text-lg">ب</span>
+            <div className="relative flex items-center justify-center w-10 h-10">
+                <img 
+                  src="/logo.png" 
+                  alt="شعار البصال" 
+                  // 👇 قمنا بإرجاع الحجم لـ w-10 وأضفنا scale-150 (تكبير 1.5 مرة)
+                  // يمكنك تغيير 150 إلى 200 لمضاعفة الحجم (scale-[2.0])
+                  className="w-10 h-10 object-contain rounded-xl shadow-md bg-white/10 transition-transform hover:scale-[1.2] scale-[1.0]" 
+                />
             </div>
             <div className="hidden sm:block">
-              <h1 className="font-bold text-lg text-primary leading-tight">البصال شوب</h1>
+              <h1 className="font-bold text-lg text-primary leading-tight">البصال فون</h1>
               <p className="text-xs text-muted-foreground">موبايلات وإكسسوارات</p>
             </div>
           </Link>

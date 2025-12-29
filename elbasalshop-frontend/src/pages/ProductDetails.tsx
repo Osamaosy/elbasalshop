@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart, ArrowRight, Minus, Plus, Check, Truck, Shield, Package } from 'lucide-react';
+import { ShoppingCart, ArrowRight, Minus, Plus, Check, Truck, Shield, Package, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api, { getImageUrl, formatPrice } from '@/lib/api';
 import { Product } from '@/types';
@@ -11,7 +11,7 @@ const ProductDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addToCart } = useCart();
-  
+
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,8 +33,8 @@ const ProductDetails: React.FC = () => {
 
       // Fetch related products
       if (productData.category) {
-        const categoryId = typeof productData.category === 'object' 
-          ? productData.category._id 
+        const categoryId = typeof productData.category === 'object'
+          ? productData.category._id
           : productData.category;
         const relatedRes = await api.get(`/products?category=${categoryId}&limit=4`);
         const related = (relatedRes.data.data?.products || relatedRes.data.products || [])
@@ -133,11 +133,10 @@ const ProductDetails: React.FC = () => {
                   <button
                     key={index}
                     onClick={() => setSelectedImage(index)}
-                    className={`w-20 h-20 shrink-0 rounded-xl border-2 overflow-hidden transition-all ${
-                      selectedImage === index
+                    className={`w-20 h-20 shrink-0 rounded-xl border-2 overflow-hidden transition-all ${selectedImage === index
                         ? 'border-primary shadow-md'
                         : 'border-border hover:border-primary/50'
-                    }`}
+                      }`}
                   >
                     <img
                       src={getImageUrl(image)}
@@ -186,6 +185,10 @@ const ProductDetails: React.FC = () => {
               {product.brand && (
                 <p className="text-muted-foreground">الماركة: {product.brand}</p>
               )}
+              <div className="flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded-full">
+                <Eye className="w-3 h-3" />
+                <span>{product.views || 0} مشاهدة</span>
+              </div>
             </div>
 
             {/* Price */}

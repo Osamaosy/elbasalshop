@@ -14,7 +14,7 @@ const getProducts = async (req, res) => {
       minPrice,
       maxPrice,
       search,
-      sort = '-createdAt',
+      sort = '-isFeatured -createdAt',
       inStock
     } = req.query;
 

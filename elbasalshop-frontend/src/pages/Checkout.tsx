@@ -122,7 +122,7 @@ const Checkout: React.FC = () => {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Form */}
           <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className="bg-card rounded-2xl border border-border p-6 space-y-6" noValidate>
+            <form id="checkout-form" onSubmit={handleSubmit} className="bg-card rounded-2xl border border-border p-6 space-y-6" noValidate>
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-4">معلومات التوصيل</h2>
 
@@ -247,6 +247,7 @@ const Checkout: React.FC = () => {
 
                 <Button
                   type="submit"
+                  form="checkout-form"
                   variant="cta"
                   size="lg"
                   className="w-full gap-2"

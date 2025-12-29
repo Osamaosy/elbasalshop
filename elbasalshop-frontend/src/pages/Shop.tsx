@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProductGrid from '@/components/products/ProductGrid';
@@ -16,8 +16,20 @@ const Shop: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [showFilters, setShowFilters] = useState(false);
 
+  // ✅ 1. إضافة State للتحكم في الصفحات
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // ✅ إعادة تحميل البيانات عند تغيير الصفحة أو الفلاتر
   useEffect(() => {
     fetchData();
+    // نقوم بالتمرير لأعلى الصفحة عند تغيير الصفحة لتجربة أفضل
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [searchParams, page]);
+
+  // ✅ تصفير الصفحة إلى 1 عند تغيير الفلتر (بحث أو قسم)
+  useEffect(() => {
+    setPage(1);
   }, [searchParams]);
 
   const fetchData = async () => {
@@ -26,6 +38,10 @@ const Shop: React.FC = () => {
       const params = new URLSearchParams();
       const search = searchParams.get('search');
       const category = searchParams.get('category');
+
+      // ✅ إرسال رقم الصفحة والحد الأقصى للمنتجات
+      params.append('page', page.toString());
+      params.append('limit', '12');
 
       if (search) params.append('search', search);
       if (category) params.append('category', category);
@@ -37,7 +53,12 @@ const Shop: React.FC = () => {
 
       setProducts(productsRes.data.data?.products || productsRes.data.products || []);
       
-      // ✅ فقط الأقسام النشطة مرتبة
+      // ✅ تخزين عدد الصفحات الكلي القادم من الباك إند
+      const pagination = productsRes.data.data?.pagination || productsRes.data.pagination;
+      if (pagination) {
+        setTotalPages(pagination.pages);
+      }
+      
       const cats = categoriesRes.data.data?.categories || categoriesRes.data.categories || [];
       setCategories(cats.filter((c: Category) => c.isActive).sort((a: Category, b: Category) => a.order - b.order));
     } catch (error) {
@@ -77,7 +98,6 @@ const Shop: React.FC = () => {
     setSearchParams(new URLSearchParams());
   };
 
-  // ✅ الحصول على اسم القسم المحدد
   const getSelectedCategoryName = () => {
     if (!selectedCategory) return 'جميع المنتجات';
     const cat = categories.find(c => c.slug === selectedCategory);
@@ -91,7 +111,7 @@ const Shop: React.FC = () => {
         <div className="container mx-auto py-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">المتجر</h1>
           <p className="text-muted-foreground mt-1">
-            {getSelectedCategoryName()} ({products.length} منتج)
+            {getSelectedCategoryName()} ({products.length} منتج في هذه الصفحة)
           </p>
         </div>
       </div>
@@ -231,6 +251,38 @@ const Shop: React.FC = () => {
                         : 'لا توجد منتجات'
                     }
                   />
+
+                  {/* ✅ 3. إضافة أزرار التنقل (Pagination) */}
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 pt-8 border-t border-border">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setPage(p => Math.max(1, p - 1))}
+                          disabled={page === 1}
+                          className="w-10 h-10"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                        
+                        <div className="flex items-center justify-center min-w-[100px] font-medium">
+                          صفحة {page} من {totalPages}
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                          disabled={page === totalPages}
+                          className="w-10 h-10"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {/* 👆 نهاية كود التنقل */}
                 </>
               )}
             </div>

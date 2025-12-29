@@ -68,7 +68,7 @@ const Home: React.FC = () => {
               </div>
               
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
-                البصال شوب
+                البصال فون
                 <br />
                 <span className="text-secondary">موبايلات وإكسسوارات</span>
               </h1>

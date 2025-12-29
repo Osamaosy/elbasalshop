@@ -54,7 +54,7 @@ const Register: React.FC = () => {
             </div>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">إنشاء حساب جديد</h1>
-          <p className="text-muted-foreground mt-2">انضم لعائلة البصال شوب</p>
+          <p className="text-muted-foreground mt-2">انضم لعائلة البصال فون</p>
         </div>
 
         <div className="bg-card rounded-2xl border border-border p-6 shadow-lg">

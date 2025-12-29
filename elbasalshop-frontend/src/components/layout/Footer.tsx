@@ -10,11 +10,17 @@ const Footer: React.FC = () => {
           {/* About */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center">
-                <span className="text-secondary-foreground font-bold text-lg">ب</span>
+              {/* 👇 استبدال حرف "ب" بالصورة بنفس إعدادات النافبار */}
+              <div className="relative flex items-center justify-center w-10 h-10">
+                <img 
+                  src="/logo.png" 
+                  alt="شعار البصال" 
+                  className="w-10 h-10 object-contain rounded-xl shadow-md bg-white/10 transition-transform hover:scale-[1.2] scale-[1.0]" 
+                />
               </div>
               <div>
-                <h3 className="font-bold text-lg">البصال شوب</h3>
+                {/* 👇 تحديث الاسم هنا أيضاً */}
+                <h3 className="font-bold text-lg">البصال فون</h3>
                 <p className="text-xs text-primary-foreground/70">موبايلات وإكسسوارات</p>
               </div>
             </div>
@@ -111,7 +117,7 @@ const Footer: React.FC = () => {
         {/* Bottom Bar */}
         <div className="mt-8 pt-8 border-t border-primary-foreground/20 text-center">
           <p className="text-sm text-primary-foreground/60">
-            © {new Date().getFullYear()} البصال شوب - جميع الحقوق محفوظة
+            © {new Date().getFullYear()} البصال فون - جميع الحقوق محفوظة
           </p>
         </div>
       </div>
