@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/shop?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
+      // setSearchQuery('');
       setIsMenuOpen(false);
     }
   };

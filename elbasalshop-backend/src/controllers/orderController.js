@@ -7,7 +7,6 @@ const { generateWhatsAppLink } = require('../services/whatsappService');
 // @route   POST /api/orders
 // @access  Private
 const createOrder = async (req, res) => {
-  // Start transaction session
   const session = await mongoose.startSession();
   session.startTransaction();
   
@@ -17,44 +16,21 @@ const createOrder = async (req, res) => {
     if (!products || products.length === 0) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: 'Please add at least one product to your order'
-      });
+      return res.status(400).json({ success: false, message: 'Please add at least one product' });
     }
     
-    // Validate and calculate total
     let totalAmount = 0;
     const orderProducts = [];
     
     for (const item of products) {
       const product = await Product.findById(item.product).session(session);
       
-      if (!product) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(404).json({
-          success: false,
-          message: `Product with ID ${item.product} not found`
-        });
-      }
-      
-      if (!product.isAvailable) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: `Product ${product.name} is not available`
-        });
+      if (!product || !product.isAvailable) {
+        throw new Error(`Product ${product ? product.name : item.product} is not available`);
       }
       
       if (product.stock < item.quantity) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}. Available: ${product.stock}`
-        });
+        throw new Error(`Insufficient stock for ${product.name}`);
       }
       
       const price = product.discountPrice || product.price;
@@ -68,12 +44,10 @@ const createOrder = async (req, res) => {
         image: product.mainImage
       });
       
-      // Update product stock within transaction
       product.stock -= item.quantity;
       await product.save({ session });
     }
     
-    // Create order within transaction
     const orderData = {
       user: req.user._id,
       products: orderProducts,
@@ -91,36 +65,23 @@ const createOrder = async (req, res) => {
     
     const [order] = await Order.create([orderData], { session });
     
-    // Commit transaction - all operations succeeded
     await session.commitTransaction();
     session.endSession();
     
-    // Populate products (after transaction)
     await order.populate('products.product');
-    
-    // Generate WhatsApp link
     const whatsappLink = generateWhatsAppLink(order);
     
     res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      data: {
-        order,
-        whatsappLink
-      }
+      data: { order, whatsappLink }
     });
     
   } catch (error) {
-    // Rollback transaction on error
     await session.abortTransaction();
     session.endSession();
-    
     console.error('Create order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating order',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -130,7 +91,6 @@ const createOrder = async (req, res) => {
 const getUserOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
-    
     const filter = { user: req.user._id };
     if (status) filter.status = status;
     
@@ -156,14 +116,8 @@ const getUserOrders = async (req, res) => {
         }
       }
     });
-    
   } catch (error) {
-    console.error('Get user orders error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching orders',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -176,37 +130,19 @@ const getOrderById = async (req, res) => {
       .populate('products.product')
       .populate('user', 'name email phone');
     
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     
-    // Check if user owns this order or is admin
     if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this order'
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     
-    res.json({
-      success: true,
-      data: { order }
-    });
-    
+    res.json({ success: true, data: { order } });
   } catch (error) {
-    console.error('Get order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching order',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @desc    Get all orders (Admin)
+// @desc    Get all orders (Admin) - ✅ النسخة المعتمدة
 // @route   GET /api/orders/admin/all
 // @access  Private/Admin
 const getAllOrders = async (req, res) => {
@@ -234,19 +170,15 @@ const getAllOrders = async (req, res) => {
     
     const total = await Order.countDocuments(filter);
     
-    // Calculate stats
+    // Calculate stats logic remains same
     const stats = await Order.aggregate([
       {
         $group: {
           _id: null,
           totalOrders: { $sum: 1 },
           totalRevenue: { $sum: '$totalAmount' },
-          pendingOrders: {
-            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
-          },
-          completedOrders: {
-            $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] }
-          }
+          pendingOrders: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+          completedOrders: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } }
         }
       }
     ]);
@@ -264,14 +196,8 @@ const getAllOrders = async (req, res) => {
         }
       }
     });
-    
   } catch (error) {
-    console.error('Get all orders error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching orders',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -280,35 +206,20 @@ const getAllOrders = async (req, res) => {
 // @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status, adminNotes } = req.body;
-    
     const order = await Order.findById(req.params.id);
-    
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
+
+    if (order) {
+      order.status = req.body.status;
+      if (order.statusHistory) {
+        order.statusHistory.push({ status: req.body.status, timestamp: Date.now() });
+      }
+      const updatedOrder = await order.save();
+      res.json({ success: true, data: { order: updatedOrder } });
+    } else {
+      res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
-    order.status = status;
-    if (adminNotes) order.adminNotes = adminNotes;
-    
-    await order.save();
-    
-    res.json({
-      success: true,
-      message: 'Order status updated successfully',
-      data: { order }
-    });
-    
   } catch (error) {
-    console.error('Update order status error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating order status',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -316,7 +227,6 @@ const updateOrderStatus = async (req, res) => {
 // @route   PUT /api/orders/:id/cancel
 // @access  Private
 const cancelOrder = async (req, res) => {
-  // Start transaction for stock restoration
   const session = await mongoose.startSession();
   session.startTransaction();
   
@@ -326,37 +236,24 @@ const cancelOrder = async (req, res) => {
     if (!order) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
+      return res.status(404).json({ success: false, message: 'Order not found' });
     }
     
-    // Check ownership
     if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to cancel this order'
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     
-    // Can only cancel pending orders
     if (order.status !== 'pending') {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: 'Only pending orders can be cancelled'
-      });
+      return res.status(400).json({ success: false, message: 'Only pending orders can be cancelled' });
     }
     
-    // Update order status
     order.status = 'cancelled';
     await order.save({ session });
     
-    // Restore product stock within transaction
     for (const item of order.products) {
       await Product.findByIdAndUpdate(
         item.product,
@@ -365,35 +262,121 @@ const cancelOrder = async (req, res) => {
       );
     }
     
-    // Commit transaction
     await session.commitTransaction();
     session.endSession();
     
-    res.json({
-      success: true,
-      message: 'Order cancelled successfully',
-      data: { order }
-    });
-    
+    res.json({ success: true, message: 'Order cancelled successfully', data: { order } });
   } catch (error) {
-    // Rollback on error
     await session.abortTransaction();
     session.endSession();
-    
-    console.error('Cancel order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error cancelling order',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// @desc    Get admin dashboard stats
+// @route   GET /api/orders/admin/stats
+// @access  Private/Admin
+const getAdminDashboardStats = async (req, res) => {
+  try {
+    // 1. إحصائيات الأرقام الأساسية
+    const orders = await Order.find({});
+    
+    const totalOrders = orders.length;
+    
+    const totalRevenue = orders
+      .filter(o => o.status === 'delivered') // نحسب أرباح الطلبات المسلمة فقط
+      .reduce((acc, order) => acc + (order.totalAmount || 0), 0);
+      
+    const pendingOrders = orders.filter(o => o.status === 'pending').length;
+
+    // ✅ التعديل هنا: زيادة العدد إلى 50 لدعم التقليب في الواجهة
+    const limitCount = 50;
+
+    // 2. المنتجات التي أوشكت على النفاذ
+    const lowStockProducts = await Product.find({ stock: { $lte: 5 } })
+      .select('name stock price mainImage')
+      .limit(limitCount);
+
+    // 3. المنتجات الأكثر مشاهدة
+    const topViewedProducts = await Product.find({})
+      .sort({ views: -1 })
+      .select('name views price mainImage')
+      .limit(limitCount);
+
+    // 4. المنتجات الأعلى تقييماً
+    const topRatedProducts = await Product.find({})
+      .sort({ 'rating.average': -1 })
+      .select('name rating price mainImage')
+      .limit(limitCount);
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          totalOrders,
+          totalRevenue,
+          pendingOrders,
+          totalProducts: await Product.countDocuments({})
+        },
+        lowStockProducts,
+        topViewedProducts,
+        topRatedProducts
+      }
+    });
+  } catch (error) {
+    console.error('Stats Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create POS order (Store Sale)
+// @route   POST /api/orders/pos
+// @access  Private/Admin
+const createPosOrder = async (req, res) => {
+  const { productId } = req.body;
+  try {
+    const product = await Product.findById(productId);
+    if (!product || product.stock <= 0) {
+      return res.status(400).json({ success: false, message: 'Product not found or out of stock' });
+    }
+
+    product.stock -= 1;
+    await product.save();
+
+    const order = await Order.create({
+      user: req.user._id,
+      orderNumber: `POS-${Date.now()}`,
+      products: [{
+        product: product._id,
+        name: product.name,
+        quantity: 1,
+        price: product.price,
+        image: product.mainImage || product.images[0]
+      }],
+      totalAmount: product.price,
+      status: 'delivered',
+      customerInfo: { name: 'Store Customer', phone: '00000000000', address: 'In Store Purchase' },
+      isPaid: true
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Store sale recorded successfully',
+      data: { order, updatedStock: product.stock }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ لاحظ: حذفنا getOrders من التصدير
 module.exports = {
   createOrder,
   getUserOrders,
   getOrderById,
   getAllOrders,
   updateOrderStatus,
-  cancelOrder
+  cancelOrder,
+  getAdminDashboardStats,
+  createPosOrder
 };

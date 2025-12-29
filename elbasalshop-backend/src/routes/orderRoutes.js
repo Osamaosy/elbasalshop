@@ -1,25 +1,35 @@
 const express = require('express');
-const { createOrderValidation } = require('../validators/orderValidators');
-
 const router = express.Router();
 const {
   createOrder,
   getUserOrders,
   getOrderById,
-  getAllOrders,
+  getAllOrders, // ✅ هنستخدم دي لأنها الأشمل
   updateOrderStatus,
-  cancelOrder
+  cancelOrder,
+  getAdminDashboardStats,
+  createPosOrder
 } = require('../controllers/orderController');
 const { protect, adminOnly } = require('../middleware/auth');
+const { createOrderValidation } = require('../validators/orderValidators'); // تأكد إنك بتستخدمها لو محتاجها
 
-// Protected routes
-router.post('/', protect, createOrderValidation, createOrder);
-router.get('/', protect, getUserOrders);
-router.get('/:id', protect, getOrderById);
-router.put('/:id/cancel', protect, cancelOrder);
+// --- مسارات المستخدم العادي (Customer) ---
+router.post('/', protect, createOrder); // إنشاء طلب
+router.get('/', protect, getUserOrders); // طلباتي
+router.get('/:id', protect, getOrderById); // تفاصيل طلب محدد
+router.put('/:id/cancel', protect, cancelOrder); // إلغاء طلب
 
-// Admin routes
+// --- مسارات الأدمن (Admin) ---
+// 1. الإحصائيات (لازم تكون قبل المسارات اللي فيها :id)
+router.get('/admin/stats', protect, adminOnly, getAdminDashboardStats);
+
+// 2. بيع المحل (POS)
+router.post('/pos', protect, adminOnly, createPosOrder);
+
+// 3. جلب كل الطلبات (مع البحث والصفحات)
 router.get('/admin/all', protect, adminOnly, getAllOrders);
+
+// 4. تحديث حالة الطلب
 router.put('/:id/status', protect, adminOnly, updateOrderStatus);
 
 module.exports = router;

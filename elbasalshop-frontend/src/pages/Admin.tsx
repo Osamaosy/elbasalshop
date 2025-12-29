@@ -4,7 +4,8 @@ import { Package, Plus, ShoppingBag, Tag, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { Order, Product, Category } from '@/types';
+// تأكد ان Product و Order و Category معرفين بشكل صحيح في types
+import { Order, Product, Category } from '@/types'; 
 import { toast } from 'sonner';
 
 import AdminStats from '@/components/admin/AdminStats';
@@ -13,7 +14,8 @@ import ProductsList from '@/components/admin/ProductsList';
 import ProductForm from '@/components/admin/ProductForm';
 import CategoriesList from '@/components/admin/CategoriesList';
 import CategoryForm from '@/components/admin/CategoryForm';
-// 1. تعريف شكل الخطأ المتوقع من الـ API (Axios)
+
+// تعريف الأنواع (يفضل نقلها لملف types.ts مستقبلاً)
 interface ApiError {
   response?: {
     data?: {
@@ -22,23 +24,46 @@ interface ApiError {
   };
 }
 
-// 2. دالة مساعدة لاستخراج رسالة الخطأ بأمان
+// تعريف دقيق لشكل البيانات للإحصائيات
+interface DashboardData {
+  stats: {
+    totalOrders: number;
+    pendingOrders: number;
+    totalProducts: number;
+    totalRevenue: number;
+  };
+  lowStockProducts: Product[];
+  topViewedProducts: Product[];
+  topRatedProducts: Product[];
+}
+
 const getErrorMessage = (error: unknown, defaultMessage: string): string => {
-  // نقوم بإخبار TS أن هذا الخطأ هو من نوع ApiError
   const apiError = error as ApiError;
   return apiError.response?.data?.message || defaultMessage;
 };
 
 const Admin: React.FC = () => {
   const { isAdmin, isLoading: authLoading } = useAuth();
+  
+  // ✅ 1. تم دمج الـ State وحذف التكرار
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    stats: { totalOrders: 0, pendingOrders: 0, totalProducts: 0, totalRevenue: 0 },
+    lowStockProducts: [],
+    topViewedProducts: [],
+    topRatedProducts: []
+  });
+
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'categories' | 'add-product' | 'add-category'>(
     'orders'
   );
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     if (isAdmin) {
@@ -55,32 +80,49 @@ const Admin: React.FC = () => {
         api.get('/orders/admin/all'),
         api.get('/products'),
         api.get('/categories'),
+        api.get('/orders/admin/stats')
       ]);
 
+      // 1. معالجة الطلبات
       if (results[0].status === 'fulfilled') {
-        // يمكنك هنا أيضاً تعريف واجهة لاستجابة الـ API لزيادة الأمان
         const ordersData = results[0].value.data;
+        // معالجة هيكلية الاستجابة سواء كانت مباشرة أو داخل data
         setOrders(ordersData.data?.orders || ordersData.orders || []);
       } else {
         console.error('Failed to fetch orders:', results[0].reason);
-        setOrders([]);
       }
 
+      // 2. معالجة المنتجات
       if (results[1].status === 'fulfilled') {
         const productsData = results[1].value.data;
         setProducts(productsData.data?.products || productsData.products || []);
       } else {
         console.error('Failed to fetch products:', results[1].reason);
-        setProducts([]);
       }
 
+      // 3. معالجة الأقسام
       if (results[2].status === 'fulfilled') {
         const categoriesData = results[2].value.data;
         setCategories(categoriesData.data?.categories || categoriesData.categories || []);
       } else {
         console.error('Failed to fetch categories:', results[2].reason);
-        setCategories([]);
       }
+
+      // 4. ✅ معالجة بيانات لوحة التحكم والإحصائيات
+      if (results[3].status === 'fulfilled') {
+        const statsData = results[3].value.data;
+        // التأكد من وجود البيانات قبل تحديث الـ State
+        const payload = statsData.data || statsData; // Fallback incase data isn't nested
+        
+        // دمج البيانات الجديدة مع القيم الافتراضية لتجنب الـ undefined
+        setDashboardData(prev => ({
+            ...prev,
+            ...payload
+        }));
+      } else {
+        console.error('Failed to fetch admin stats:', results[3].reason);
+      }
+
     } catch (error: unknown) {
       console.error('Error fetching admin data:', error);
       setError('حدث خطأ أثناء تحميل البيانات');
@@ -97,6 +139,8 @@ const Admin: React.FC = () => {
         orders.map((order) => (order._id === orderId ? { ...order, status: status as Order['status'] } : order))
       );
       toast.success('تم تحديث حالة الطلب');
+      // تحديث الإحصائيات (اختياري)
+      fetchData();
     } catch (error: unknown) {
       console.error('Error updating order:', error);
       const message = getErrorMessage(error, 'فشل تحديث حالة الطلب');
@@ -104,21 +148,38 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleAddProduct = async (formData: FormData) => {
+  const handleProductSubmit = async (formData: FormData) => {
     try {
-      await api.post('/products', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      toast.success('تم إضافة المنتج بنجاح');
+      if (editingProduct) {
+        await api.put(`/products/${editingProduct._id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('تم تحديث المنتج بنجاح');
+      } else {
+        await api.post('/products', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('تم إضافة المنتج بنجاح');
+      }
+      setEditingProduct(null);
       fetchData();
       setActiveTab('products');
     } catch (error: unknown) {
-      console.error('Error adding product:', error);
-      const message = getErrorMessage(error, 'فشل إضافة المنتج');
+      console.error('Error saving product:', error);
+      const message = getErrorMessage(error, editingProduct ? 'فشل تحديث المنتج' : 'فشل إضافة المنتج');
       toast.error(message);
-      throw error;
     }
+  };
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProduct(product);
+    setActiveTab('add-product');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProduct(null);
+    setActiveTab('products');
   };
 
   const handleAddCategory = async (data: {
@@ -136,13 +197,11 @@ const Admin: React.FC = () => {
       console.error('Error adding category:', error);
       const message = getErrorMessage(error, 'فشل إضافة القسم');
       toast.error(message);
-      throw error;
     }
   };
 
   const handleDeleteCategory = async (id: string) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا القسم؟')) return;
-
     try {
       await api.delete(`/categories/${id}`);
       toast.success('تم حذف القسم');
@@ -156,7 +215,6 @@ const Admin: React.FC = () => {
 
   const handleDeleteProduct = async (id: string) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) return;
-
     try {
       await api.delete(`/products/${id}`);
       toast.success('تم حذف المنتج');
@@ -173,20 +231,19 @@ const Admin: React.FC = () => {
       toast.error('المنتج غير متوفر (المخزون 0)');
       return;
     }
-
-    if (!window.confirm(`هل تريد تسجيل بيع قطعة واحدة من "${product.name}" داخل المحل؟`)) return;
+    if (!window.confirm(`هل تريد تسجيل بيع قطعة واحدة من "${product.name}" داخل المحل؟ (سيتم تسجيل طلب مدفوع)`)) return;
 
     try {
-      await api.put(`/products/${product._id}`, {
-        stock: product.stock - 1,
+      const { data } = await api.post('/orders/pos', {
+        productId: product._id
       });
-
-      setProducts(products.map((p) => (p._id === product._id ? { ...p, stock: p.stock - 1 } : p)));
-
-      toast.success('تم خصم القطعة من المخزون بنجاح');
+      // تحديث المخزون محلياً
+      setProducts(products.map((p) => (p._id === product._id ? { ...p, stock: data.data.updatedStock } : p)));
+      toast.success('تم تسجيل عملية البيع بنجاح ✅');
+      fetchData();
     } catch (error: unknown) {
-      console.error('Error updating stock:', error);
-      const message = getErrorMessage(error, 'حدث خطأ أثناء تحديث المخزون');
+      console.error('Error recording sale:', error);
+      const message = getErrorMessage(error, 'حدث خطأ أثناء تسجيل البيع');
       toast.error(message);
     }
   };
@@ -203,16 +260,8 @@ const Admin: React.FC = () => {
     return <Navigate to="/" replace />;
   }
 
-  const stats = {
-    totalOrders: orders.length,
-    pendingOrders: orders.filter((o) => o.status === 'pending').length,
-    totalProducts: products.length,
-    totalRevenue: orders.filter((o) => o.status === 'delivered').reduce((sum, o) => sum + (o.totalAmount || 0), 0),
-  };
-
   return (
     <div className="min-h-screen bg-background animate-fade-in">
-      {/* Header */}
       <div className="bg-gradient-nile text-primary-foreground">
         <div className="container mx-auto py-6">
           <h1 className="text-2xl md:text-3xl font-bold">لوحة التحكم</h1>
@@ -223,10 +272,10 @@ const Admin: React.FC = () => {
       <div className="container mx-auto py-8">
         {/* Stats */}
         <AdminStats
-          totalOrders={stats.totalOrders}
-          pendingOrders={stats.pendingOrders}
-          totalProducts={stats.totalProducts}
-          totalRevenue={stats.totalRevenue}
+          stats={dashboardData.stats}
+          lowStockProducts={dashboardData.lowStockProducts}
+          topViewedProducts={dashboardData.topViewedProducts}
+          topRatedProducts={dashboardData.topRatedProducts}
         />
 
         {/* Error Message */}
@@ -243,7 +292,7 @@ const Admin: React.FC = () => {
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           <Button
             variant={activeTab === 'orders' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('orders')}
+            onClick={() => { setActiveTab('orders'); setEditingProduct(null); }}
             className="gap-2"
           >
             <ShoppingBag className="w-4 h-4" />
@@ -251,7 +300,7 @@ const Admin: React.FC = () => {
           </Button>
           <Button
             variant={activeTab === 'products' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('products')}
+            onClick={() => { setActiveTab('products'); setEditingProduct(null); }}
             className="gap-2"
           >
             <Package className="w-4 h-4" />
@@ -259,7 +308,7 @@ const Admin: React.FC = () => {
           </Button>
           <Button
             variant={activeTab === 'categories' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('categories')}
+            onClick={() => { setActiveTab('categories'); setEditingProduct(null); }}
             className="gap-2"
           >
             <Tag className="w-4 h-4" />
@@ -267,15 +316,15 @@ const Admin: React.FC = () => {
           </Button>
           <Button
             variant={activeTab === 'add-product' ? 'secondary' : 'outline'}
-            onClick={() => setActiveTab('add-product')}
+            onClick={() => { setActiveTab('add-product'); setEditingProduct(null); }}
             className="gap-2"
           >
             <Plus className="w-4 h-4" />
-            إضافة منتج
+            {editingProduct ? 'تعديل منتج' : 'إضافة منتج'}
           </Button>
           <Button
             variant={activeTab === 'add-category' ? 'secondary' : 'outline'}
-            onClick={() => setActiveTab('add-category')}
+            onClick={() => { setActiveTab('add-category'); setEditingProduct(null); }}
             className="gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -309,6 +358,7 @@ const Admin: React.FC = () => {
                 products={products}
                 onQuickShopSale={handleQuickShopSale}
                 onDelete={handleDeleteProduct}
+                onEdit={handleEditProduct}
               />
             ) : null}
 
@@ -321,7 +371,14 @@ const Admin: React.FC = () => {
               <CategoriesList categories={categories} onDelete={handleDeleteCategory} />
             ) : null}
 
-            {activeTab === 'add-product' && <ProductForm categories={categories} onSubmit={handleAddProduct} />}
+            {activeTab === 'add-product' && (
+              <ProductForm
+                categories={categories}
+                onSubmit={handleProductSubmit}
+                initialData={editingProduct}
+                onCancel={handleCancelEdit}
+              />
+            )}
 
             {activeTab === 'add-category' && <CategoryForm onSubmit={handleAddCategory} />}
           </>

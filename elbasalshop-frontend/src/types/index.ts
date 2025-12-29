@@ -1,4 +1,4 @@
-// src/types/index.ts - ✅ مطابق 100% مع Backend
+// src/types/index.ts
 
 export interface User {
   _id: string;
@@ -31,6 +31,17 @@ export interface Category {
   updatedAt?: string;
 }
 
+// ✅ 1. إضافة واجهة خاصة للتقييم
+export interface Review {
+  _id: string;
+  user: string | User;
+  name: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Product {
   _id: string;
   name: string;
@@ -40,14 +51,18 @@ export interface Product {
   description: string;
   specifications: Record<string, string>;
   price: number;
-  discountPrice?: number; // ✅ Backend name
+  discountPrice?: number;
   stock: number;
   images: string[];
   mainImage: string;
   isAvailable: boolean;
-  isFeatured: boolean; // ✅ Backend name
+  isFeatured: boolean;
   tags?: string[];
   views?: number;
+  
+  // ✅ 2. إضافة التقييمات هنا
+  reviews?: Review[];
+  
   rating?: {
     average: number;
     count: number;
@@ -68,7 +83,7 @@ export interface Order {
   _id: string;
   orderNumber: string;
   user: string | User;
-  products: OrderProduct[]; // ✅ Backend name
+  products: OrderProduct[];
   totalAmount: number;
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   customerInfo: {
@@ -105,6 +120,7 @@ export interface ApiResponse<T> {
 export interface AuthPayload {
   user: User;
   token: string;
+  message?: string; // أحياناً ترسل رسالة مع التوكن
 }
 
 export type AuthResponse = ApiResponse<AuthPayload>;

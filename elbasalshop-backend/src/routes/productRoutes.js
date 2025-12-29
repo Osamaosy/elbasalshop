@@ -6,7 +6,8 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
-  getFeaturedProducts
+  getFeaturedProducts,
+  createProductReview // 1. ✅ تأكد من استيراد هذه الدالة
 } = require('../controllers/productController');
 const { protect, adminOnly } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -19,6 +20,10 @@ const {
 router.get('/', getProducts);
 router.get('/featured', getFeaturedProducts);
 router.get('/:id', getProductById);
+
+// 2. ✅ مسار التقييمات (يجب أن يكون هنا)
+// المستخدم المسجل فقط (protect) يستطيع التقييم
+router.post('/:id/reviews', protect, createProductReview);
 
 // Admin routes
 router.post(

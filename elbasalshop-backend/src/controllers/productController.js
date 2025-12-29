@@ -1,6 +1,12 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const mongoose = require('mongoose');
+
+// دالة مساعدة لتنظيف النص للبحث
+function escapeRegex(text) {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+}
+
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
 // @access  Public
@@ -18,14 +24,10 @@ const getProducts = async (req, res) => {
       inStock
     } = req.query;
 
-    // Build filter
     const filter = { isAvailable: true };
 
-    // ✅ تصحيح منطق البحث بالـ slug أو _id
     if (category) {
       let categoryQuery;
-
-      // 2. التحقق مما إذا كان النص هو ObjectId صالح
       if (mongoose.isValidObjectId(category)) {
         categoryQuery = { 
           $or: [
@@ -34,7 +36,6 @@ const getProducts = async (req, res) => {
           ]
         };
       } else {
-        // إذا لم يكن ObjectId (مثل "accessories") نبحث بالـ slug فقط لتجنب CastError
         categoryQuery = { slug: category };
       }
 
@@ -58,32 +59,45 @@ const getProducts = async (req, res) => {
       }
     }
 
-    if (brand) filter.brand = new RegExp(brand, 'i');
+    if (brand) filter.brand = new RegExp(escapeRegex(brand), 'i');
+    
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
+    
     if (inStock === 'true') filter.stock = { $gt: 0 };
+
+    // ✅ منطق البحث الذكي
     if (search) {
-      filter.$or = [
-        { name: new RegExp(search, 'i') },
-        { description: new RegExp(search, 'i') },
-        { brand: new RegExp(search, 'i') }
-      ];
+      const searchTerms = search.trim().split(/\s+/);
+      const regexConditions = searchTerms.map(term => {
+        const regex = new RegExp(escapeRegex(term), 'i');
+        return {
+          $or: [
+            { name: regex },
+            { description: regex },
+            { brand: regex }
+          ]
+        };
+      });
+
+      if (filter.$and) {
+        filter.$and.push(...regexConditions);
+      } else {
+        filter.$and = regexConditions;
+      }
     }
 
-    // Pagination
     const skip = (page - 1) * limit;
 
-    // Get products
     const products = await Product.find(filter)
       .populate('category', 'name type slug')
       .sort(sort)
       .limit(Number(limit))
       .skip(skip);
 
-    // Get total count
     const total = await Product.countDocuments(filter);
 
     res.json({
@@ -124,7 +138,6 @@ const getProductById = async (req, res) => {
       });
     }
 
-    // Increment views
     product.views += 1;
     await product.save();
 
@@ -151,13 +164,11 @@ const createProduct = async (req, res) => {
     const productData = req.body;
     let images = [];
 
-    // 1. التعامل مع الصور المرفوعة
     if (req.files && req.files.length > 0) {
       const uploadedImages = req.files.map(file => file.path);
       images = [...images, ...uploadedImages];
     }
 
-    // 2. التعامل مع روابط الصور الخارجية
     if (req.body.images) {
       let externalImages = [];
       if (typeof req.body.images === 'string') {
@@ -197,6 +208,7 @@ const createProduct = async (req, res) => {
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
   try {
+    // 1. جلب المنتج أولاً (مهم جداً للتحقق من السعر)
     let product = await Product.findById(req.params.id);
 
     if (!product) {
@@ -209,6 +221,7 @@ const updateProduct = async (req, res) => {
     const updateData = req.body;
     let newImages = [];
 
+    // التعامل مع الصور
     if (req.files && req.files.length > 0) {
       const uploadedImages = req.files.map(file => file.path);
       newImages = [...newImages, ...uploadedImages];
@@ -228,19 +241,25 @@ const updateProduct = async (req, res) => {
       updateData.images = [...(product.images || []), ...newImages];
     }
 
-    if (req.body.images && Array.isArray(req.body.images) && req.files.length === 0) {
-      updateData.images = req.body.images;
-    }
-
     if (updateData.images && updateData.images.length > 0 && !updateData.mainImage) {
       updateData.mainImage = updateData.images[0];
     }
 
-    product = await Product.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    // ✅ التعديل الآمن: تحديث القيم يدوياً بدلاً من findByIdAndUpdate
+    // هذا يضمن تشغيل الـ validators بشكل صحيح ومقارنة السعر
+    Object.keys(updateData).forEach((key) => {
+      // نمنع تحديث الصور هنا لأننا عالجناها بالأعلى، ونمنع تحديث الـ id
+      if (key !== '_id' && key !== 'images') {
+         product[key] = updateData[key];
+      }
+    });
+
+    if (updateData.images) {
+      product.images = updateData.images;
+    }
+    
+    // 2. الحفظ (سيقوم بتشغيل التحقق بنجاح لأن السعر أصبح معروفاً)
+    await product.save();
 
     res.json({
       success: true,
@@ -314,11 +333,61 @@ const getFeaturedProducts = async (req, res) => {
   }
 };
 
+// @desc    Create new review
+// @route   POST /api/products/:id/reviews
+// @access  Private
+const createProductReview = async (req, res) => {
+  const { rating, comment } = req.body;
+
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // التحقق مما إذا كان المستخدم قد قيم المنتج سابقاً
+    const alreadyReviewed = product.reviews.find(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (alreadyReviewed) {
+      return res.status(400).json({ success: false, message: 'You have already reviewed this product' });
+    }
+
+    const review = {
+      name: req.user.name,
+      rating: Number(rating),
+      comment,
+      user: req.user._id,
+    };
+
+    product.reviews.push(review);
+
+    // تحديث عدد التقييمات
+    product.rating.count = product.reviews.length;
+
+    // حساب المتوسط الجديد
+    product.rating.average =
+      product.reviews.reduce((acc, item) => item.rating + acc, 0) /
+      product.reviews.length;
+
+    await product.save();
+
+    res.status(201).json({ success: true, message: 'Review added' });
+  } catch (error) {
+    console.error('Review Error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+
 module.exports = {
   getProducts,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
-  getFeaturedProducts
+  getFeaturedProducts,
+  createProductReview
 };

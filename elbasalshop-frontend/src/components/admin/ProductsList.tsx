@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Store, Trash } from 'lucide-react';
+import { Eye, Store, Trash, Edit } from 'lucide-react'; // 1. استيراد أيقونة Edit
 import { Button } from '@/components/ui/button';
 import { Product } from '@/types';
 import { getImageUrl, formatPrice } from '@/lib/api';
@@ -8,9 +8,10 @@ interface ProductsListProps {
   products: Product[];
   onQuickShopSale: (product: Product) => void;
   onDelete: (productId: string) => void;
+  onEdit: (product: Product) => void; // 2. إضافة دالة التعديل للواجهة
 }
 
-const ProductsList: React.FC<ProductsListProps> = ({ products, onQuickShopSale, onDelete }) => {
+const ProductsList: React.FC<ProductsListProps> = ({ products, onQuickShopSale, onDelete, onEdit }) => {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {products.map((product) => (
@@ -25,7 +26,19 @@ const ProductsList: React.FC<ProductsListProps> = ({ products, onQuickShopSale, 
               }}
             />
 
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+            {/* أزرار التحكم */}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              
+              {/* زر التعديل الجديد */}
+              <Button
+                size="icon"
+                onClick={() => onEdit(product)}
+                title="تعديل المنتج"
+                className="bg-blue-600 hover:bg-blue-700 text-white border-none h-9 w-9 rounded-full shadow-lg hover:scale-110 transition-transform"
+              >
+                <Edit className="w-5 h-5" />
+              </Button>
+
               <Button
                 size="icon"
                 onClick={() => onQuickShopSale(product)}
