@@ -246,7 +246,6 @@ const Home: React.FC = () => {
               <Smartphone className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-bold text-foreground mb-2">قريباً...</h3>
               <p className="text-muted-foreground mb-4">نجهز لكم أفضل المنتجات</p>
-              <p className="text-sm text-muted-foreground">تأكد من تشغيل الـ Backend على المنفذ 5000</p>
             </div>
           ) : null}
         </div>
