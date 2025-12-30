@@ -6,23 +6,19 @@ const connectDB = async () => {
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error(`❌ MongoDB connection error: ${err}`);
-    });
-    
+    // Optional: Monitor connection events for logging purposes
     mongoose.connection.on('disconnected', () => {
-      console.log('⚠️  MongoDB disconnected');
-      // محاولة إعادة الاتصال عند الانقطاع المفاجئ
-      setTimeout(connectDB, 5000);
+      console.log('⚠️ MongoDB disconnected! Attempting to reconnect...');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected!');
     });
     
   } catch (error) {
     console.error(`❌ Error connecting to MongoDB: ${error.message}`);
-    // بدلاً من قتل السيرفر، نحاول الاتصال مرة أخرى بعد 5 ثواني
-    console.log('🔄 Retrying connection in 5 seconds...');
-    setTimeout(connectDB, 5000); 
-    // حذفنا process.exit(1) لمنع الانهيار
+    // في بيئة التشغيل، من الأفضل إيقاف العملية ليقوم مدير العمليات (مثل PM2 أو Docker) بإعادة تشغيلها بشكل نظيف
+    process.exit(1); 
   }
 };
 

@@ -19,26 +19,35 @@ connectDB();
 // Middleware
 app.use(helmet()); // Security headers
 
-// CORS configuration
+// ✅ CORS configuration (Improved)
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-frontend-domain.com'
-    : '*', // Allow all origins in development
+  origin: (origin, callback) => {
+    const allowedOrigins = process.env.FRONTEND_URL 
+      ? process.env.FRONTEND_URL.split(',') 
+      : ['http://localhost:5173', 'http://localhost:3000']; // Default dev ports
+      
+    // Allow requests with no origin (like mobile apps or curl requests) or if origin is in allowed list
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions)); // Enable CORS
+app.use(cors(corsOptions));
 
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(morgan('dev')); // Logging
 
-// ✅ Rate limiting - معدل للـ development
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // ✅ 1000 في الـ dev
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   message: 'Too many requests from this IP, please try again later.',
-  skip: (req) => process.env.NODE_ENV === 'development' // ✅ تخطي في الـ dev تماماً
+  skip: (req) => process.env.NODE_ENV === 'development'
 });
 app.use('/api/', limiter);
 
@@ -49,6 +58,8 @@ app.use('/api/categories', require('./src/routes/categoryRoutes'));
 app.use('/api/orders', require('./src/routes/orderRoutes'));
 
 // Static files for uploads
+// ⚠️ Note: In production (e.g., Heroku/Vercel), local files are ephemeral. 
+// Use Cloudinary or S3 for persistent storage.
 app.use('/uploads', express.static('uploads'));
 
 // Welcome route
@@ -57,12 +68,7 @@ app.get('/', (req, res) => {
     success: true,
     message: 'Welcome to Mobile Shop API',
     version: '1.0.0',
-    endpoints: {
-      auth: '/api/auth',
-      products: '/api/products',
-      categories: '/api/categories',
-      orders: '/api/orders'
-    }
+    env: process.env.NODE_ENV
   });
 });
 

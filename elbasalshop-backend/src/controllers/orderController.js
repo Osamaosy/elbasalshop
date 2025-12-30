@@ -142,7 +142,7 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Get all orders (Admin) - ✅ النسخة المعتمدة
+// @desc    Get all orders (Admin)
 // @route   GET /api/orders/admin/all
 // @access  Private/Admin
 const getAllOrders = async (req, res) => {
@@ -170,24 +170,15 @@ const getAllOrders = async (req, res) => {
     
     const total = await Order.countDocuments(filter);
     
-    // Calculate stats logic remains same
-    const stats = await Order.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalOrders: { $sum: 1 },
-          totalRevenue: { $sum: '$totalAmount' },
-          pendingOrders: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-          completedOrders: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } }
-        }
-      }
-    ]);
+    // ✅ تحسين: استخدام Aggregation لحساب الإحصائيات بدلاً من جلب كل البيانات
+    // هذا الجزء اختياري هنا لأننا نرجع الـ stats في دالة منفصلة، 
+    // ولكن إذا كنت تريد إرجاعها هنا أيضاً، يفضل فصلها لتقليل الحمل.
+    // سأبقي الإرجاع بسيطاً هنا للتركيز على القائمة.
     
     res.json({
       success: true,
       data: {
         orders,
-        stats: stats[0] || { totalOrders: 0, totalRevenue: 0, pendingOrders: 0, completedOrders: 0 },
         pagination: {
           page: Number(page),
           limit: Number(limit),
@@ -278,18 +269,36 @@ const cancelOrder = async (req, res) => {
 // @access  Private/Admin
 const getAdminDashboardStats = async (req, res) => {
   try {
-    // 1. إحصائيات الأرقام الأساسية
-    const orders = await Order.find({});
-    
-    const totalOrders = orders.length;
-    
-    const totalRevenue = orders
-      .filter(o => o.status === 'delivered') // نحسب أرباح الطلبات المسلمة فقط
-      .reduce((acc, order) => acc + (order.totalAmount || 0), 0);
-      
-    const pendingOrders = orders.filter(o => o.status === 'pending').length;
+    // ✅ تحسين جذري: استخدام Aggregation لحساب الأرقام مباشرة في قاعدة البيانات
+    // هذا يمنع تحميل آلاف الطلبات إلى الذاكرة مما يسبب انهيار السيرفر
+    const statsAggregation = await Order.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalOrders: { $sum: 1 },
+          totalRevenue: { 
+            $sum: { 
+              $cond: [{ $eq: ["$status", "delivered"] }, "$totalAmount", 0] 
+            } 
+          },
+          pendingOrders: { 
+            $sum: { 
+              $cond: [{ $eq: ["$status", "pending"] }, 1, 0] 
+            } 
+          }
+        }
+      }
+    ]);
 
-    // ✅ التعديل هنا: زيادة العدد إلى 50 لدعم التقليب في الواجهة
+    const stats = statsAggregation.length > 0 ? statsAggregation[0] : {
+      totalOrders: 0,
+      totalRevenue: 0,
+      pendingOrders: 0
+    };
+    
+    // إضافة عدد المنتجات
+    stats.totalProducts = await Product.countDocuments({});
+
     const limitCount = 50;
 
     // 2. المنتجات التي أوشكت على النفاذ
@@ -312,12 +321,7 @@ const getAdminDashboardStats = async (req, res) => {
     res.json({
       success: true,
       data: {
-        stats: {
-          totalOrders,
-          totalRevenue,
-          pendingOrders,
-          totalProducts: await Product.countDocuments({})
-        },
+        stats,
         lowStockProducts,
         topViewedProducts,
         topRatedProducts
@@ -335,13 +339,17 @@ const getAdminDashboardStats = async (req, res) => {
 const createPosOrder = async (req, res) => {
   const { productId } = req.body;
   try {
-    const product = await Product.findById(productId);
-    if (!product || product.stock <= 0) {
+    // ✅ تحسين جذري: دمج الفحص والخصم في خطوة واحدة (Atomic Operation)
+    // هذا يمنع بيع منتج غير متوفر إذا ضغط موظفان الزر في نفس اللحظة
+    const product = await Product.findOneAndUpdate(
+      { _id: productId, stock: { $gt: 0 } }, // الشرط: المخزون أكبر من صفر
+      { $inc: { stock: -1 } }, // الإجراء: خصم 1
+      { new: true } // إرجاع المنتج بعد التعديل
+    );
+
+    if (!product) {
       return res.status(400).json({ success: false, message: 'Product not found or out of stock' });
     }
-
-    await Product.findByIdAndUpdate(productId, { $inc: { stock: -1 } });
-    await product.save();
 
     const order = await Order.create({
       user: req.user._id,
@@ -351,7 +359,7 @@ const createPosOrder = async (req, res) => {
         name: product.name,
         quantity: 1,
         price: product.price,
-        image: product.mainImage || product.images[0]
+        image: product.mainImage || (product.images && product.images[0])
       }],
       totalAmount: product.price,
       status: 'delivered',
@@ -369,7 +377,6 @@ const createPosOrder = async (req, res) => {
   }
 };
 
-// ✅ لاحظ: حذفنا getOrders من التصدير
 module.exports = {
   createOrder,
   getUserOrders,
