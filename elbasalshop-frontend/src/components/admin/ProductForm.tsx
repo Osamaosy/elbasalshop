@@ -14,7 +14,6 @@ interface ProductFormProps {
 }
 
 const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initialData, onCancel }) => {
-  // تجميع كل البيانات في حالة واحدة كما في الكود القديم
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
@@ -27,7 +26,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
   });
 
   const [productImages, setProductImages] = useState<File[]>([]);
-  const [imageUrls, setImageUrls] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ملء البيانات عند التعديل
@@ -43,11 +41,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
         stock: initialData.stock.toString() || '',
         isFeatured: initialData.isFeatured || false,
       });
-
-      // وضع روابط الصور الحالية في حقل الروابط للتعديل
-      if (initialData.images && initialData.images.length > 0) {
-        setImageUrls(initialData.images.join('\n'));
-      }
+      // تمت إزالة منطق تعيين روابط الصور النصية
     }
   }, [initialData]);
 
@@ -87,9 +81,12 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
       return;
     }
 
-    // التحقق من وجود صور (إما ملفات جديدة أو روابط موجودة)
-    if (productImages.length === 0 && !imageUrls.trim()) {
-      toast.error('يجب إضافة صورة واحدة على الأقل (ملف أو رابط)');
+    // التحقق: يجب أن يكون هناك صور جديدة مرفوعة أو صور قديمة موجودة مسبقاً
+    const hasExistingImages = initialData?.images && initialData.images.length > 0;
+    const hasNewImages = productImages.length > 0;
+
+    if (!hasNewImages && !hasExistingImages) {
+      toast.error('يجب إضافة صورة واحدة على الأقل');
       return;
     }
 
@@ -106,18 +103,12 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
       formData.append('stock', productForm.stock);
       formData.append('isFeatured', String(productForm.isFeatured));
 
-      // 1. إضافة الصور المرفوعة (الملفات)
+      // إضافة الصور المرفوعة (الملفات)
       productImages.forEach(image => {
         formData.append('images', image);
       });
 
-      // 2. إضافة روابط الصور الخارجية
-      if (imageUrls.trim()) {
-        const urls = imageUrls.split('\n').filter(url => url.trim() !== '');
-        urls.forEach(url => {
-          formData.append('images', url.trim());
-        });
-      }
+      // تمت إزالة كود إضافة الروابط الخارجية النصية
 
       await onSubmit(formData);
       
@@ -250,7 +241,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
           <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
             <h3 className="font-semibold text-sm">صور المنتج</h3>
 
-            {/* خيار 1: رفع ملفات */}
+            {/* خيار رفع ملفات */}
             <div>
               <label className="block text-sm font-medium mb-2">رفع صور من الجهاز</label>
               <div className="border-2 border-dashed border-input rounded-lg p-6 text-center bg-background">
@@ -290,36 +281,15 @@ const ProductForm: React.FC<ProductFormProps> = ({ categories, onSubmit, initial
                 </div>
               )}
             </div>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-muted/20 px-2 text-muted-foreground">أو / و</span>
-              </div>
-            </div>
-
-            {/* خيار 2: روابط خارجية */}
-            <div>
-              <label className="block text-sm font-medium mb-2">روابط صور خارجية (اختياري)</label>
-              <Textarea
-                placeholder={`https://example.com/image1.jpg\nhttps://example.com/image2.jpg`}
-                value={imageUrls}
-                onChange={(e) => setImageUrls(e.target.value)}
-                className="font-mono text-xs"
-                rows={3}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                ضع كل رابط في سطر منفصل.
-              </p>
-            </div>
+            
+            {/* تمت إزالة حقل الروابط الخارجية والفواصل */}
+            
           </div>
 
           <div className="flex gap-2 pt-4">
             <Button
               type="submit"
-              variant="cta" // تأكد من أن هذا المتغير (variant) مدعوم في Button أو استخدم 'default'
+              variant="default" 
               size="lg"
               className="flex-1"
               disabled={isSubmitting}

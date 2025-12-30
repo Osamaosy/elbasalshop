@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, MapPin, Clock, Facebook, Instagram, MessageCircle } from 'lucide-react';
+import { Phone, MapPin, Clock, Facebook, Instagram, MessageCircle, Github, Linkedin } from 'lucide-react';
 
 const Footer: React.FC = () => {
   return (
@@ -10,7 +10,6 @@ const Footer: React.FC = () => {
           {/* About */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              {/* 👇 استبدال حرف "ب" بالصورة بنفس إعدادات النافبار */}
               <div className="relative flex items-center justify-center w-10 h-10">
                 <img 
                   src="/logo.png" 
@@ -19,7 +18,6 @@ const Footer: React.FC = () => {
                 />
               </div>
               <div>
-                {/* 👇 تحديث الاسم هنا أيضاً */}
                 <h3 className="font-bold text-lg">البصال فون</h3>
                 <p className="text-xs text-primary-foreground/70">موبايلات وإكسسوارات</p>
               </div>
@@ -66,7 +64,7 @@ const Footer: React.FC = () => {
                 className="flex items-center gap-3 text-sm text-primary-foreground/80 hover:text-secondary transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>واتساب</span>
+                <span>واتساب المتجر</span>
               </a>
               <div className="flex items-start gap-3 text-sm text-primary-foreground/80">
                 <MapPin className="w-4 h-4 mt-0.5" />
@@ -114,11 +112,55 @@ const Footer: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div className="mt-8 pt-8 border-t border-primary-foreground/20 text-center">
+        {/* Bottom Bar & Developer Info */}
+        <div className="mt-12 pt-6 border-t border-primary-foreground/20 flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-right">
+          
           <p className="text-sm text-primary-foreground/60">
             © {new Date().getFullYear()} البصال فون - جميع الحقوق محفوظة
           </p>
+
+          {/* Developer Section */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+            <span className="text-xs text-primary-foreground/70">
+              تصميم وتطوير <span className="font-bold text-secondary">أسامة إبراهيم رزق</span>
+            </span>
+            
+            <div className="flex items-center gap-3 border-r border-white/20 pr-3 mr-1">
+              {/* GitHub */}
+              <a 
+                href="https://github.com/Osamaosy/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary-foreground/80 hover:text-white transition-colors"
+                title="GitHub"
+              >
+                <Github className="w-4 h-4" />
+              </a>
+
+              {/* LinkedIn */}
+              <a 
+                href="https://www.linkedin.com/in/osama-rezk/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary-foreground/80 hover:text-[#0077b5] transition-colors"
+                title="LinkedIn"
+              >
+                <Linkedin className="w-4 h-4" />
+              </a>
+
+              {/* WhatsApp Developer */}
+              <a 
+                href="https://wa.me/201277122289" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary-foreground/80 hover:text-[#25D366] transition-colors"
+                title="Contact Developer"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+
         </div>
       </div>
     </footer>

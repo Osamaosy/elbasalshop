@@ -39,50 +39,45 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   // دالة لمزامنة السلة مع السيرفر (تحديث الأسعار والمخزون)
+// استبدل دالة validateAndSyncCart الحالية بهذا الكود:
+
   const validateAndSyncCart = async (localItems: CartItem[]) => {
-    if (localItems.length === 0) return;
+    if (localItems.length === 0) {
+        setItems([]);
+        return;
+    }
 
     try {
-      // نرسل طلب لكل منتج لتحديث بياناته (يمكن تحسينها بـ Endpoint واحد يقبل مصفوفة IDs)
-      const updatedItems = await Promise.all(
-        localItems.map(async (item) => {
-          try {
-            const { data } = await api.get<{ data: { product: Product } }>(`/products/${item.product._id}`);
-            const freshProduct = data.data.product;
+      // 1. تجميع كل الـ IDs في نص واحد
+      const productIds = localItems.map(item => item.product._id).join(',');
 
-            // التحقق مما إذا كان المخزون المتاح الآن أقل من الكمية المطلوبة
-            const adjustedQuantity = item.quantity > freshProduct.stock 
-              ? freshProduct.stock 
-              : item.quantity;
+      // 2. إرسال طلب واحد فقط للسيرفر (Performance Fix) 🚀
+      const { data } = await api.get(`/products?ids=${productIds}`);
+      const freshProducts: Product[] = data.data.products || [];
 
-            return {
-              ...item,
-              product: freshProduct, // تحديث بيانات المنتج (السعر الجديد)
-              quantity: adjustedQuantity // تحديث الكمية إذا نقص المخزون
-            };
-          } catch (error) {
-            // إذا تم حذف المنتج من السيرفر، نرجعه null ليتم تصفيته
-            return null;
-          }
-        })
-      );
+      // 3. مطابقة البيانات
+      const validatedItems: CartItem[] = [];
+      
+      localItems.forEach(localItem => {
+        const freshProduct = freshProducts.find(p => p._id === localItem.product._id);
+        
+        if (freshProduct && freshProduct.isAvailable && freshProduct.stock > 0) {
+            const adjustedQuantity = localItem.quantity > freshProduct.stock 
+                ? freshProduct.stock 
+                : localItem.quantity;
 
-      // تصفية المنتجات المحذوفة والمنتجات التي أصبح مخزونها 0
-      const validItems = updatedItems.filter(
-        (item): item is CartItem => item !== null && item.product.stock > 0 && item.quantity > 0
-      );
+            validatedItems.push({
+                product: freshProduct,
+                quantity: adjustedQuantity
+            });
+        }
+      });
 
-      setItems(validItems);
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(validItems));
-
-      // تنبيه المستخدم إذا تغيرت السلة
-      if (JSON.stringify(validItems) !== JSON.stringify(localItems)) {
-        toast('تم تحديث سلة التسوق بناءً على توفر المنتجات وتغير الأسعار', { icon: 'ℹ️' });
-      }
+      setItems(validatedItems);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(validatedItems));
 
     } catch (error) {
       console.error('Failed to sync cart:', error);
-      // في حال فشل الاتصال، نعتمد على النسخة المحلية مؤقتاً
       setItems(localItems);
     }
   };

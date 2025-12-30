@@ -1,11 +1,43 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const mongoose = require('mongoose');
+const cloudinary = require('../config/cloudinary');
 
 // دالة مساعدة لتنظيف النص للبحث
 function escapeRegex(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
+
+const extractPublicId = (url) => {
+  if (!url) return null;
+  try {
+    // 1. نفصل الرابط بناءً على "/upload/"
+    const splitUrl = url.split('/upload/');
+    if (splitUrl.length < 2) return null;
+
+    // 2. الجزء الثاني يحتوي على (v123/folder/image.jpg) أو (folder/image.jpg)
+    let publicIdPart = splitUrl[1];
+
+    // 3. نزيل رقم الإصدار (v12345/) إذا وجد
+    if (publicIdPart.startsWith('v')) {
+      const versionIndex = publicIdPart.indexOf('/');
+      if (versionIndex !== -1) {
+        publicIdPart = publicIdPart.substring(versionIndex + 1);
+      }
+    }
+
+    // 4. نزيل الامتداد (.jpg, .png, etc)
+    const lastDotIndex = publicIdPart.lastIndexOf('.');
+    if (lastDotIndex !== -1) {
+      publicIdPart = publicIdPart.substring(0, lastDotIndex);
+    }
+
+    return publicIdPart;
+  } catch (error) {
+    console.error('Error extracting public_id:', error);
+    return null;
+  }
+};
 
 // @desc    Get all products with filtering, search, and pagination
 // @route   GET /api/products
@@ -21,42 +53,30 @@ const getProducts = async (req, res) => {
       maxPrice,
       search,
       sort = '-isFeatured -createdAt',
-      inStock
+      inStock,
+      ids
     } = req.query;
 
-    const filter = { isAvailable: true };
+const filter = { isAvailable: true };
+
+    // ✅ دعم جلب منتجات محددة (للسلة) في طلب واحد
+    if (ids) {
+      const idsArray = ids.split(',').filter(id => mongoose.isValidObjectId(id));
+      if (idsArray.length > 0) {
+        filter._id = { $in: idsArray };
+      }
+    }
 
     if (category) {
       let categoryQuery;
       if (mongoose.isValidObjectId(category)) {
-        categoryQuery = { 
-          $or: [
-            { slug: category },
-            { _id: category }
-          ]
-        };
+        categoryQuery = { $or: [{ slug: category }, { _id: category }] };
       } else {
         categoryQuery = { slug: category };
       }
-
       const categoryDoc = await Category.findOne(categoryQuery);
-      
-      if (categoryDoc) {
-        filter.category = categoryDoc._id;
-      } else {
-        return res.json({
-          success: true,
-          data: {
-            products: [],
-            pagination: {
-              page: Number(page),
-              limit: Number(limit),
-              total: 0,
-              pages: 0
-            }
-          }
-        });
-      }
+      if (categoryDoc) filter.category = categoryDoc._id;
+      else return res.json({ success: true, data: { products: [], pagination: { total: 0 } } });
     }
 
     if (brand) filter.brand = new RegExp(escapeRegex(brand), 'i');
@@ -69,34 +89,27 @@ const getProducts = async (req, res) => {
     
     if (inStock === 'true') filter.stock = { $gt: 0 };
 
-    // ✅ منطق البحث الذكي
     if (search) {
       const searchTerms = search.trim().split(/\s+/);
-      const regexConditions = searchTerms.map(term => {
-        const regex = new RegExp(escapeRegex(term), 'i');
-        return {
-          $or: [
-            { name: regex },
-            { description: regex },
-            { brand: regex }
-          ]
-        };
-      });
-
-      if (filter.$and) {
-        filter.$and.push(...regexConditions);
-      } else {
-        filter.$and = regexConditions;
-      }
+      const regexConditions = searchTerms.map(term => ({
+        $or: [
+          { name: new RegExp(escapeRegex(term), 'i') },
+          { description: new RegExp(escapeRegex(term), 'i') },
+          { brand: new RegExp(escapeRegex(term), 'i') }
+        ]
+      }));
+      filter.$and = filter.$and ? [...filter.$and, ...regexConditions] : regexConditions;
     }
 
     const skip = (page - 1) * limit;
+    // إذا طلبنا IDs محددة، نلغي الـ limit غالباً لنجلبهم كلهم
+    const queryLimit = ids ? 100 : Number(limit); 
 
     const products = await Product.find(filter)
       .populate('category', 'name type slug')
       .sort(sort)
-      .limit(Number(limit))
-      .skip(skip);
+      .limit(queryLimit)
+      .skip(ids ? 0 : skip);
 
     const total = await Product.countDocuments(filter);
 
@@ -106,23 +119,18 @@ const getProducts = async (req, res) => {
         products,
         pagination: {
           page: Number(page),
-          limit: Number(limit),
+          limit: queryLimit,
           total,
-          pages: Math.ceil(total / limit)
+          pages: Math.ceil(total / queryLimit)
         }
       }
     });
 
   } catch (error) {
     console.error('Get products error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching products',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // @desc    Get single product by ID
 // @route   GET /api/products/:id
 // @access  Public
@@ -208,47 +216,43 @@ const createProduct = async (req, res) => {
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
   try {
-    // 1. جلب المنتج أولاً (مهم جداً للتحقق من السعر)
     let product = await Product.findById(req.params.id);
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
     const updateData = req.body;
     let newImages = [];
 
-    // التعامل مع الصور
+    // ✅ 1. التعامل مع الصور الجديدة المرفوعة
     if (req.files && req.files.length > 0) {
       const uploadedImages = req.files.map(file => file.path);
       newImages = [...newImages, ...uploadedImages];
     }
 
-    if (req.body.newImages) {
-      let externalImages = [];
-      if (typeof req.body.newImages === 'string') {
-        externalImages = [req.body.newImages];
-      } else if (Array.isArray(req.body.newImages)) {
-        externalImages = req.body.newImages;
-      }
-      newImages = [...newImages, ...externalImages];
-    }
+    // (تم إزالة دعم الروابط الخارجية newImages من النص)
 
+    // ✅ 2. حذف الصورة القديمة من Cloudinary إذا تم رفع صورة رئيسية جديدة
+    // نفترض أن أول صورة جديدة هي الصورة الرئيسية إذا لم يتم تحديد غيرها
     if (newImages.length > 0) {
+      // إذا كان المنتج لديه صورة رئيسية قديمة، نحذفها
+      if (product.mainImage) {
+        const publicId = extractPublicId(product.mainImage);
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
+          console.log(`Deleted old main image: ${publicId}`);
+        }
+      }
+      
+      // إضافة الصور الجديدة
       updateData.images = [...(product.images || []), ...newImages];
+      // تحديث الصورة الرئيسية بأحدث صورة مرفوعة
+      updateData.mainImage = newImages[0];
     }
 
-    if (updateData.images && updateData.images.length > 0 && !updateData.mainImage) {
-      updateData.mainImage = updateData.images[0];
-    }
-
-    // ✅ التعديل الآمن: تحديث القيم يدوياً بدلاً من findByIdAndUpdate
-    // هذا يضمن تشغيل الـ validators بشكل صحيح ومقارنة السعر
+    // تحديث البيانات النصية
     Object.keys(updateData).forEach((key) => {
-      // نمنع تحديث الصور هنا لأننا عالجناها بالأعلى، ونمنع تحديث الـ id
       if (key !== '_id' && key !== 'images') {
          product[key] = updateData[key];
       }
@@ -258,22 +262,13 @@ const updateProduct = async (req, res) => {
       product.images = updateData.images;
     }
     
-    // 2. الحفظ (سيقوم بتشغيل التحقق بنجاح لأن السعر أصبح معروفاً)
     await product.save();
 
-    res.json({
-      success: true,
-      message: 'Product updated successfully',
-      data: { product }
-    });
+    res.json({ success: true, message: 'Product updated successfully', data: { product } });
 
   } catch (error) {
     console.error('Update product error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating product',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error updating product', error: error.message });
   }
 };
 
@@ -285,26 +280,28 @@ const deleteProduct = async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // ✅ حذف جميع الصور المرتبطة بالمنتج من Cloudinary
+    if (product.images && product.images.length > 0) {
+      const deletePromises = product.images.map(imageUrl => {
+        const publicId = extractPublicId(imageUrl);
+        if (publicId) {
+          return cloudinary.uploader.destroy(publicId);
+        }
       });
+      await Promise.all(deletePromises);
+      console.log('Deleted product images from Cloudinary');
     }
 
     await product.deleteOne();
 
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
+    res.json({ success: true, message: 'Product deleted successfully' });
 
   } catch (error) {
     console.error('Delete product error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting product',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error deleting product', error: error.message });
   }
 };
 
