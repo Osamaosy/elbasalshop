@@ -13,11 +13,16 @@ const connectDB = async () => {
     
     mongoose.connection.on('disconnected', () => {
       console.log('⚠️  MongoDB disconnected');
+      // محاولة إعادة الاتصال عند الانقطاع المفاجئ
+      setTimeout(connectDB, 5000);
     });
     
   } catch (error) {
     console.error(`❌ Error connecting to MongoDB: ${error.message}`);
-    process.exit(1);
+    // بدلاً من قتل السيرفر، نحاول الاتصال مرة أخرى بعد 5 ثواني
+    console.log('🔄 Retrying connection in 5 seconds...');
+    setTimeout(connectDB, 5000); 
+    // حذفنا process.exit(1) لمنع الانهيار
   }
 };
 

@@ -340,7 +340,7 @@ const createPosOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Product not found or out of stock' });
     }
 
-    product.stock -= 1;
+    await Product.findByIdAndUpdate(productId, { $inc: { stock: -1 } });
     await product.save();
 
     const order = await Order.create({
