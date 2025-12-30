@@ -141,7 +141,7 @@ const Cart: React.FC = () => {
                   <span className="font-medium">{totalItems}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">المجموع الفرعي</span>
+                  <span className="text-muted-foreground">المجموع الكلي</span>
                   <span className="font-medium">{formatPrice(totalPrice)}</span>
                 </div>
                 <div className="flex justify-between">
