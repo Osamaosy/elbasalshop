@@ -122,7 +122,7 @@ const Footer: React.FC = () => {
           {/* Developer Section */}
           <div className="flex flex-col sm:flex-row items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
             <span className="text-xs text-primary-foreground/70">
-              تصميم وتطوير <span className="font-bold text-secondary">أسامة إبراهيم رزق</span>
+              تصميم وتطوير <span className="font-bold text-secondary">أسامة إبراهيم</span>
             </span>
             
             <div className="flex items-center gap-3 border-r border-white/20 pr-3 mr-1">
